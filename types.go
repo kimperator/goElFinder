@@ -40,10 +40,13 @@ type volumeResponse struct {
 
 	Dim string `json:"dim,omitempty"` // for images
 
-	Added []volumeFileDir `json:"added,omitempty"` // for upload, mkdir, rename
+	Added []volumeFileDir `json:"added"` // for upload, mkdir, rename
 	Warning []string `json:"warning,omitempty"` // for upload
 	Changed []volumeFileDir `json:"changed,omitempty"` // for mkdir
 	Hashes map[string]string `json:"hashes,omitempty"` // for mkdir
+
+	Name int `json:"_name,omitempty"`
+	Chunkmerget string `json:"_chunkmerget,omitempty"`
 
 	Removed []string `json:"removed,omitempty"` // for remove, rename
 

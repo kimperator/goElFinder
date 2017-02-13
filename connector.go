@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"strconv"
 )
 
 const APIver = "2.1"
@@ -20,9 +21,9 @@ func NetHttp(w http.ResponseWriter, r *http.Request)  {
 	volume := new(volumeResponse)
 
 // Test data config
-	volume.setRoot("./test")
-	volume.allowDirs([]string{"/1"})
-	volume.setDefaultRight(false)
+	volume.setRoot("./files")
+	//volume.allowDirs([]string{"/1"})
+	volume.setDefaultRight(true)
 // /Test data config
 
 	if r.Method == "GET" {
@@ -58,7 +59,7 @@ fmt.Println("GET:", r.Form)
 		}
 		cmd = r.Form["cmd"][0]
 	} else if r.Method =="POST" {
-		r.ParseMultipartForm(32 << 20)
+		r.ParseMultipartForm(32 << 20) // ToDo check 8Mb
 fmt.Println("POST", r.PostForm)
 		if r.PostForm["target"] != nil {
 			_, target, _ = parseHash(r.PostForm["target"][0])
@@ -169,19 +170,27 @@ fmt.Println("POST", r.PostForm)
 	case "duplicate":
 	case "paste":
 	case "upload":
-		err := []string{}
-		for i, f := range r.MultipartForm.File["upload[]"] {
-			fmt.Println(r.PostForm["upload_path[]"][i],":", f.Filename)
-			file, _ := f.Open()
-			_, path, _ := parseHash(r.PostForm["upload_path[]"][i])
-			e := volume.upload(path, f.Filename, file)
-			if e != nil {
-				err = append(err, e.Error())
+		if r.PostForm["chunk"] != nil && r.PostForm["chunk"][0] != "" {
+			cid, _ := strconv.Atoi(r.PostForm["cid"][0])
+			_, path, _ := parseHash(r.PostForm["upload_path[]"][0])
+			file, _ := r.MultipartForm.File["upload[]"][0].Open()
+			fmt.Println("Result chunk", volume.chunkUpload(cid, path, r.PostForm["chunk"][0], file))
+		} else {
+			err := []string{}
+			for i, f := range r.MultipartForm.File["upload[]"] {
+				fmt.Println(r.PostForm["upload_path[]"][i],":", f.Filename)
+				file, _ := f.Open()
+				_, path, _ := parseHash(r.PostForm["upload_path[]"][i])
+				e := volume.upload(path, f.Filename, file)
+				if e != nil {
+					err = append(err, e.Error())
+				}
+			}
+			if len(err) > 0 {
+				volume.Error = err
 			}
 		}
-		if len(err) > 0 {
-			volume.Error = err
-		}
+
 
 	case "get":
 	case "put":
