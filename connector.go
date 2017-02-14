@@ -15,7 +15,11 @@ const APIver = "2.1"
 func NetHttp(config Config) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var (
+			volume response
+			init, tree bool
 			cmd string
+			name string
+			dirs []string
 			target string
 			targets []string
 			chunk string
@@ -24,12 +28,6 @@ func NetHttp(config Config) http.Handler {
 			err error
 		)
 
-		volume := new(response)
-		volume.setRoot(config.Root)
-		volume.setDefaultRight(config.DefaultRight)
-		volume.allowDirs(config.AllowDirs)
-		volume.denyDirs(config.DenyDirs)
-
 		if r.Method == "GET" {
 			if err := r.ParseForm(); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -37,14 +35,23 @@ func NetHttp(config Config) http.Handler {
 			}
 			fmt.Println("GET:", r.Form)
 			if r.Form["init"] != nil && r.Form["init"][0] == "1" {
-				volume.config.init = true
+				init = true
+			} else {
+				init = false
 			}
 			if r.Form["tree"] != nil && r.Form["tree"][0] == "1" {
-				volume.config.tree = true
+				tree = true
+			} else {
+				tree = false
 			}
-
+			if r.Form["name"] != nil {
+				name = r.Form["name"][0]
+			}
+			if r.Form["dirs[]"] != nil {
+				dirs = r.Form["dirs[]"]
+			}
 			if r.Form["target"] != nil {
-				_, target, err = parseHash(r.Form["target"][0])
+				volume, target, err = parseHash(config, r.Form["target"][0])
 				if err != nil {
 					log.Println(err)
 				}
@@ -56,7 +63,8 @@ func NetHttp(config Config) http.Handler {
 
 			} else if r.Form["targets[]"] != nil {
 				for _, ft := range r.Form["targets[]"] {
-					_, p, err := parseHash(ft)
+					var p string
+					volume, p, err = parseHash(config, ft)
 					if err != nil {
 						log.Println(err)
 					}
@@ -82,7 +90,7 @@ func NetHttp(config Config) http.Handler {
 			r.ParseMultipartForm(32 << 20) // ToDo check 8Mb
 			fmt.Println("POST", r.PostForm)
 			if r.PostForm["target"] != nil {
-				_, target, err = parseHash(r.PostForm["target"][0])
+				volume, target, err = parseHash(config, r.PostForm["target"][0])
 				if err != nil {
 					log.Println(err)
 				}
@@ -94,7 +102,8 @@ func NetHttp(config Config) http.Handler {
 
 			} else if r.PostForm["targets[]"] != nil {
 				for _, ft := range r.PostForm["targets[]"] {
-					_, p, err := parseHash(ft)
+					var p string
+					volume, p, err = parseHash(config, ft)
 					if err != nil {
 						log.Println(err)
 					}
@@ -115,17 +124,18 @@ func NetHttp(config Config) http.Handler {
 			}
 			if r.PostForm["upload_path[]"] != nil {
 				for i := range r.PostForm["upload_path[]"] {
-					_, path, err := parseHash(r.PostForm["upload_path[]"][i])
+					var p string
+					volume, p, err = parseHash(config, r.PostForm["upload_path[]"][i])
 					if err != nil {
 						log.Println(err)
 					}
 					//ToDo error multi path
-					if !volume.checkRight(path) {
+					if !volume.checkRight(p) {
 						w.Header().Set("Content-Type", "application/json")
 						w.Write([]byte(`{"error" : "errLocked"}`))
 						return
 					}
-					uploadPath = append(uploadPath, path)
+					uploadPath = append(uploadPath, p)
 				}
 			}
 
@@ -135,39 +145,29 @@ func NetHttp(config Config) http.Handler {
 
 			cmd = r.PostForm["cmd"][0]
 		}
+//-------------------------------------------------------------------------
 
 
-
-		//-------------------------------------------------------------------------
 		switch cmd {
 		case "open":
-			if volume.checkRight(target) {
-				err := volume.open(target)
-				if err != nil {
-					log.Println(err)
-				}
-
-			} else {
-				volume.Error = []string{"errLocked", target, }
+			err := volume.open(init, tree, target)
+			if err != nil {
+				log.Println(err)
 			}
 
 		case "file":
-			if volume.checkRight(target) {
-				fileName, mimeType, data, err := volume.file(target)
-				if err != nil {
-					volume.Error = err.Error()
-				} else {
-					w.Header().Set("Content-Type", mimeType)
-					if r.Form["download"] != nil {
-						w.Header().Set("Content-Disposition", "attachment; filename='" + fileName + "'")
-					} else {
-						w.Header().Set("Content-Disposition", "inline; filename='" + fileName + "'")
-					}
-					w.Write(data)
-					return
-				}
+			fileName, mimeType, data, err := volume.file(target)
+			if err != nil {
+				volume.Error = err.Error()
 			} else {
-				volume.Error = []string{"errLocked", target, }
+				w.Header().Set("Content-Type", mimeType)
+				if r.Form["download"] != nil {
+					w.Header().Set("Content-Disposition", "attachment; filename='" + fileName + "'")
+				} else {
+					w.Header().Set("Content-Disposition", "inline; filename='" + fileName + "'")
+				}
+				w.Write(data)
+				return
 			}
 
 		case "tree":
@@ -183,13 +183,9 @@ func NetHttp(config Config) http.Handler {
 			}
 
 		case "mkdir":
-			if r.Form["name"] != nil {
-				fmt.Println(volume.mkdir(target, r.Form["name"][0])) // ToDo
-			}
-			if len(r.Form["dirs[]"]) > 0 {
+			if len(dirs) > 0 {
 				err := []string{}
-				for _, f := range r.Form["dirs[]"] {
-					fmt.Println("Make dir:", f)
+				for _, f := range dirs {
 					e := volume.mkdir(target, f)
 					if e != nil {
 						err = append(err, e.Error())
@@ -197,6 +193,11 @@ func NetHttp(config Config) http.Handler {
 				}
 				if len(err) > 0 {
 					volume.Error = err
+				}
+			} else {
+				err = volume.mkdir(target, name)
+				if err != nil {
+					volume.Error = err.Error()
 				}
 			}
 
@@ -214,13 +215,10 @@ func NetHttp(config Config) http.Handler {
 			}
 
 		case "rename":
-			if r.Form["name"] != nil {
-				err := volume.rename(target, r.Form["name"][0])
-				if err != nil {
-					volume.Error = err.Error()
-				}
+			err := volume.rename(target, name)
+			if err != nil {
+				volume.Error = err.Error()
 			}
-			fmt.Println(volume)
 
 		case "duplicate":
 		case "paste":

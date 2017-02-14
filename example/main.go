@@ -10,12 +10,16 @@ import (
 func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/elf/", http.StripPrefix("/elf/", http.FileServer(http.Dir("./elf/"))))
-	mux.Handle("/connector", elFinder.NetHttp(elFinder.Config{
+
+	config := elFinder.Config{}
+	config["l0"] = elFinder.Volume {
 		Root: "./files",
 		AllowDirs: []string{"/Allow"},
 		DenyDirs:  []string{"/Deny"},
 		DefaultRight: false,
-	}))
+	}
+	mux.Handle("/connector", elFinder.NetHttp(config))
+
 	fmt.Println("Listen on :8080")
 	log.Fatal(http.ListenAndServe(":8080", mux))
 }

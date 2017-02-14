@@ -42,13 +42,13 @@ func (volume *response) setDefaultRight(right bool) {
 }
 
 // Request functions
-func (volume *response) open(path string) error {
+func (volume *response) open(init, tree bool, target string) error {
 	var (
 		err error
 	)
 
-	if volume.config.init {
-		path = "/"
+	if init {
+		target = "/"
 		root, err := volume._infoPath(volume.config.rootDir)
 		if err != nil {
 			return err
@@ -56,28 +56,25 @@ func (volume *response) open(path string) error {
 		volume.Api = APIver
 		volume.Cwd = root
 	} else {
-		obj, err := volume._infoPath(filepath.Join(volume.config.rootDir, path))
+		obj, err := volume._infoPath(filepath.Join(volume.config.rootDir, target))
 		if err != nil {
 			return err
 		}
 		volume.Cwd = obj
 	}
 
-	err = filepath.Walk(filepath.Join(volume.config.rootDir, path), volume._info)
+	err = filepath.Walk(filepath.Join(volume.config.rootDir, target), volume._info)
 	if err != nil {
 		return err
 	}
 
-	if volume.config.tree {
-
-	}
 	return nil
 }
 
-func (volume *response) file(path string) (fileName, mimeType string, data []byte, err error) {
-	target := filepath.Join(volume.config.rootDir, path)
+func (volume *response) file(target string) (fileName, mimeType string, data []byte, err error) {
+	target = filepath.Join(volume.config.rootDir, target)
 	data, err = ioutil.ReadFile(target)
-	fileName = filepath.Base(path)
+	fileName = filepath.Base(target)
 	mimeType = mime.TypeByExtension(filepath.Ext(fileName))
 	return fileName, mimeType, data, err
 }
@@ -96,7 +93,7 @@ func (volume *response) mkdir(path, name string) error {
 	if volume.Hashes == nil {
 		volume.Hashes = map[string]string{}
 	}
-	volume.Hashes[name] = createHash("l0", filepath.Join(path, name))
+	volume.Hashes[name] = createHash(volume.config.id, filepath.Join(path, name))
 	changed, err := volume._infoPath(filepath.Join(volume.config.rootDir, path))
 	if err != nil {
 		return err
@@ -110,7 +107,7 @@ func (volume *response) rm(path string) error {
 	if err != nil {
 		return err
 	}
-	volume.Removed = append(volume.Removed, createHash("l0", path))
+	volume.Removed = append(volume.Removed, createHash(volume.config.id, path))
 	return nil
 }
 
@@ -122,7 +119,7 @@ func (volume *response) rename(path, name string) error {
 	}
 	added, err := volume._infoPath(newPath)
 	volume.Added = append(volume.Added, added)
-	volume.Removed = append(volume.Removed, createHash("l0", path))
+	volume.Removed = append(volume.Removed, createHash(volume.config.id, path))
 	return nil
 }
 
@@ -185,7 +182,6 @@ func (volume *response) chunkUpload(cid int, target, chunk string, file io.Reade
 		}
 		allComplete := func() bool {
 			for i := 0; i <= total; i++ {
-				//fmt.Println("Check chank:", filepath.Join(volume.config.rootDir, target, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total)))
 				if _, err := os.Stat(filepath.Join(volume.config.rootDir, target, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total))); os.IsNotExist(err) {
 					return false
 				}
@@ -246,7 +242,6 @@ func (volume *response) chunkUpload(cid int, target, chunk string, file io.Reade
 			if err != nil {
 				return err
 			}
-			//fmt.Println("Read", chunkPath, "read:", nr, "bytes write:", nw, "bytes")
 			c.Close()
 			err = os.Remove(chunkPath)
 			if err != nil {
@@ -262,7 +257,6 @@ func (volume *response) chunkUpload(cid int, target, chunk string, file io.Reade
 			return err
 		}
 		volume.Added = append(volume.Added, fInfo)
-		//fmt.Println("End chunk merge files. Cid:", cid, "Target path:", targetPath, "Total:", total+1, "part")
 	}
 
 	return nil
@@ -333,19 +327,19 @@ func (volume *response) _getFileDirInfo(path string, info os.FileInfo) (fileDir,
 
 	if path != volume.config.rootDir {
 		if volume._trimRootDir(filepath.Join(path, ".." + string(os.PathSeparator))) != "" { //ToDo
-			p.Phash = createHash("l0", volume._trimRootDir(filepath.Join(path, ".." + string(os.PathSeparator))))
+			p.Phash = createHash(volume.config.id, volume._trimRootDir(filepath.Join(path, ".." + string(os.PathSeparator))))
 		} else {
-			p.Phash = createHash("l0", string(os.PathSeparator))
+			p.Phash = createHash(volume.config.id, string(os.PathSeparator))
 		}
-		p.Hash = createHash("l0", volume._trimRootDir(path))
+		p.Hash = createHash(volume.config.id, volume._trimRootDir(path))
 	} else {
 		p.Isroot = 1
-		p.Hash = createHash("l0", string(os.PathSeparator))
+		p.Hash = createHash(volume.config.id, string(os.PathSeparator))
 		p.Phash = ""
 	}
 	if info.IsDir() {
 		p.Mime = "directory"
-		p.Volumeid = "l0_"
+		p.Volumeid = "volume.config.id_"
 		u, err := os.Open(path)
 		if err != nil {
 			return fileDir{}, err

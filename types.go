@@ -19,16 +19,18 @@ type volumeDriver interface {
 }
 */
 
-type Config struct {
+type Volume struct {
+	Name string
 	Root string
 	DefaultRight bool
 	AllowDirs []string
 	DenyDirs []string
 }
 
+type Config map[string]Volume
+
 type volumeConfig struct {
-	init bool
-	tree bool
+	id string
 	rootDir string // [name]realPath
 	dirsRight map[string]bool
 	defaultRight bool
