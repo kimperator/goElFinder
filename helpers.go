@@ -14,10 +14,11 @@ import (
 )
 
 func decode64(s string) (string, error) {
-	if i := len(s) % 4; i != 0 {
-		s += strings.Repeat("=", 4-i)
-	}
-	t, err := base64.StdEncoding.DecodeString(s)
+	str := strings.Replace(s, " ", "+",-1)
+//	str = strings.Replace(str, "_", "/", -1)
+
+	fmt.Println("decode:", str)
+	t, err := base64.RawURLEncoding.DecodeString(str)
 	if err != nil {
 		return "", err
 	}
@@ -25,16 +26,16 @@ func decode64(s string) (string, error) {
 }
 
 func encode64(s string) string {
-	t:= base64.StdEncoding.EncodeToString([]byte(s))
-	return strings.TrimRight(t, "=")
+	return base64.RawURLEncoding.EncodeToString([]byte(s))
 }
 
 func createHash(volumeId, path string) string {
 	return volumeId + "_" + encode64(path)
 }
 
-func parseHash(target string) (volumeId, path string, err error) {
-	splitTarget := strings.Split(target, "_")
+func parseHash(target string) (volumeId, path string, err error) { //ToDo check file name
+	splitTarget := strings.SplitN(target, "_", 2)
+	fmt.Println(splitTarget)
 	if len(splitTarget) != 2 {
 		return "", "", errors.New("Bad target")
 	}
@@ -44,9 +45,9 @@ func parseHash(target string) (volumeId, path string, err error) {
 		return "", "", errors.New("Bad base64 path")
 	}
 	path = strings.TrimPrefix(filepath.Clean(path), "..")
-	path = strings.TrimPrefix(filepath.Clean(path), string(filepath.Separator) + "..")
+	path = strings.TrimPrefix(filepath.Clean(path), string(os.PathSeparator) + "..")
 	if path == "" {
-		path = "/"
+		path = string(os.PathSeparator)
 	}
 	fmt.Println("Clean path:", path)
 	return volumeId, path, err
@@ -57,9 +58,9 @@ func getImageDim(imagePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	image, _, err := image.DecodeConfig(file)
+	img, _, err := image.DecodeConfig(file)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%dx%d", image.Width, image.Height), nil
+	return fmt.Sprintf("%dx%d", img.Width, img.Height), nil
 }

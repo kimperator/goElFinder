@@ -19,6 +19,13 @@ type volumeDriver interface {
 }
 */
 
+type Config struct {
+	Root string
+	DefaultRight bool
+	AllowDirs []string
+	DenyDirs []string
+}
+
 type volumeConfig struct {
 	init bool
 	tree bool
@@ -27,33 +34,33 @@ type volumeConfig struct {
 	defaultRight bool
 }
 
-type volumeResponse struct {
-	config volumeConfig
+type response struct {
+	config      volumeConfig
 
-	Api string `json:"api,omitempty"` // The version number of the protocol, must be >= 2.1, ATTENTION - return api ONLY for init request!
-	Cwd volumeFileDir `json:"cwd,omitempty"` // Current Working Directory - information about the current directory. Information about File/Directory
-	Files []volumeFileDir `json:"files,omitempty"` // array of objects - files and directories in current directory. If parameter tree == true, then added to the folder of the directory tree to a given depth. The order of files is not important. Note you must include the top-level volume objects here as well (i.e. cwd is repeated here, in addition to other volumes)
-	NetDrivers []string `json:"netDrivers,omitempty"` // Network protocols list which can be mounted on the fly (using netmount command). Now only ftp supported.
-	Options volumeOptions `json:"options,omitempty"`
-	UplMaxFile string `json:"uplMaxFile,omitempty"` // Allowed upload max number of file per request. For example 20
-	UplMaxSize string `json:"uplMaxSize,omitempty"` // Allowed upload max size per request. For example "32M"
+	Api         string `json:"api,omitempty"`               // The version number of the protocol, must be >= 2.1, ATTENTION - return api ONLY for init request!
+	Cwd         fileDir `json:"cwd,omitempty"`              // Current Working Directory - information about the current directory. Information about File/Directory
+	Files       []fileDir `json:"files,omitempty"`          // array of objects - files and directories in current directory. If parameter tree == true, then added to the folder of the directory tree to a given depth. The order of files is not important. Note you must include the top-level volume objects here as well (i.e. cwd is repeated here, in addition to other volumes)
+	NetDrivers  []string `json:"netDrivers,omitempty"`      // Network protocols list which can be mounted on the fly (using netmount command). Now only ftp supported.
+	Options     options `json:"options,omitempty"`
+	UplMaxFile  string `json:"uplMaxFile,omitempty"`        // Allowed upload max number of file per request. For example 20
+	UplMaxSize  string `json:"uplMaxSize,omitempty"`        // Allowed upload max size per request. For example "32M"
 
-	Dim string `json:"dim,omitempty"` // for images
+	Dim         string `json:"dim,omitempty"`               // for images
 
-	Added []volumeFileDir `json:"added"` // for upload, mkdir, rename
-	Warning []string `json:"warning,omitempty"` // for upload
-	Changed []volumeFileDir `json:"changed,omitempty"` // for mkdir
-	Hashes map[string]string `json:"hashes,omitempty"` // for mkdir
+	Added       []fileDir `json:"added"`                    // for upload, mkdir, rename
+	Warning     []string `json:"warning,omitempty"`         // for upload
+	Changed     []fileDir `json:"changed,omitempty"`        // for mkdir
+	Hashes      map[string]string `json:"hashes,omitempty"` // for mkdir
 
-	Name int `json:"_name,omitempty"`
-	Chunkmerget string `json:"_chunkmerget,omitempty"`
+	Name        string `json:"_name,omitempty"`
+	Chunkmerged string `json:"_chunkmerged,omitempty"`
 
-	Removed []string `json:"removed,omitempty"` // for remove, rename
+	Removed     []string `json:"removed,omitempty"`         // for remove, rename
 
-	Error interface{} `json:"error,omitempty"`
+	Error       interface{} `json:"error,omitempty"`
 }
 
-type volumeOptions struct {
+type options struct {
 	Path string `json:"path,omitempty"` // Current folder path
 	Url string `json:"url,omitempty"` // Current folder URL
 	TmbUrl string `json:"tmbURL,omitempty"` // Thumbnails folder URL
@@ -63,7 +70,7 @@ type volumeOptions struct {
 
 }
 
-type volumeFileDir struct {
+type fileDir struct {
 	Name string `json:"name,omitempty"` // name of file/dir. Required
 	Hash string `json:"hash,omitempty"` //  hash of current file/dir path, first symbol must be letter, symbols before _underline_ - volume id, Required.
 	Phash string `json:"phash,omitempty"` // hash of parent directory. Required except roots dirs.

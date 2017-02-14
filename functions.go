@@ -8,15 +8,18 @@ import (
 	"strings"
 	"io/ioutil"
 	"io"
+	"strconv"
+	"regexp"
+	"errors"
 )
 
 // Config functions
-func (volume *volumeResponse) setRoot(path string) {
+func (volume *response) setRoot(path string) {
 	volume.config.rootDir, _ = filepath.Abs(path)
 	fmt.Println(volume.config.rootDir)
 }
 
-func (volume *volumeResponse) allowDirs(dirs []string) {
+func (volume *response) allowDirs(dirs []string) {
 	if volume.config.dirsRight == nil {
 		volume.config.dirsRight = map[string]bool{}
 	}
@@ -25,7 +28,7 @@ func (volume *volumeResponse) allowDirs(dirs []string) {
 	}
 }
 
-func (volume *volumeResponse) denyDirs(dirs []string) {
+func (volume *response) denyDirs(dirs []string) {
 	if volume.config.dirsRight == nil {
 		volume.config.dirsRight = map[string]bool{}
 	}
@@ -34,13 +37,12 @@ func (volume *volumeResponse) denyDirs(dirs []string) {
 	}
 }
 
-func (volume *volumeResponse) setDefaultRight(right bool) {
+func (volume *response) setDefaultRight(right bool) {
 	volume.config.defaultRight = right
 }
 
-
 // Request functions
-func (volume *volumeResponse) open(path string) error {
+func (volume *response) open(path string) error {
 	var (
 		err error
 	)
@@ -72,7 +74,7 @@ func (volume *volumeResponse) open(path string) error {
 	return nil
 }
 
-func (volume *volumeResponse) file(path string) (fileName, mimeType string, data []byte, err error) {
+func (volume *response) file(path string) (fileName, mimeType string, data []byte, err error) {
 	target := filepath.Join(volume.config.rootDir, path)
 	data, err = ioutil.ReadFile(target)
 	fileName = filepath.Base(path)
@@ -80,7 +82,7 @@ func (volume *volumeResponse) file(path string) (fileName, mimeType string, data
 	return fileName, mimeType, data, err
 }
 
-func (volume *volumeResponse) mkdir(path, name string) error {
+func (volume *response) mkdir(path, name string) error {
 	create := filepath.Join(volume.config.rootDir, path, name)
 	err := os.MkdirAll(create, 0777)
 	if err != nil {
@@ -103,7 +105,7 @@ func (volume *volumeResponse) mkdir(path, name string) error {
 	return nil
 }
 
-func (volume *volumeResponse) rm(path string) error {
+func (volume *response) rm(path string) error {
 	err := os.RemoveAll(filepath.Join(volume.config.rootDir, path))
 	if err != nil {
 		return err
@@ -112,7 +114,7 @@ func (volume *volumeResponse) rm(path string) error {
 	return nil
 }
 
-func (volume *volumeResponse) rename(path, name string) error {
+func (volume *response) rename(path, name string) error {
 	newPath := filepath.Join(volume.config.rootDir, filepath.Dir(path), filepath.Base(name))
 	err := os.Rename(filepath.Join(volume.config.rootDir, path), newPath)
 	if err != nil {
@@ -124,7 +126,7 @@ func (volume *volumeResponse) rename(path, name string) error {
 	return nil
 }
 
-func (volume *volumeResponse) upload(path, name string, file io.Reader) error {
+func (volume *response) upload(path, name string, file io.Reader) error {
 	path = filepath.Join(volume.config.rootDir, path, name)
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
@@ -150,7 +152,123 @@ func (volume *volumeResponse) upload(path, name string, file io.Reader) error {
 	return nil
 }
 
-func (volume *volumeResponse) dim(path string) error {
+func (volume *response) chunkUpload(cid int, target, chunk string, file io.Reader) error {
+	//	fmt.Println("Chunk", cid, target, chunk, file)
+	if cid != 0 {
+		if file != nil {
+			tmpPath := filepath.Join(volume.config.rootDir, target, fmt.Sprintf(".%d_%s~", cid, chunk))
+			f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE, 0666)
+			if err != nil {
+				volume.Warning = append(volume.Warning, err.Error())
+				return err
+			}
+			_, err = io.Copy(f, file)
+			if err != nil {
+				volume.Warning = append(volume.Warning, err.Error())
+				return err
+			}
+			f.Close()
+			os.Rename(tmpPath, filepath.Join(volume.config.rootDir, target, fmt.Sprintf(".%d_%s", cid, chunk)))
+		}
+
+		// check complete ---------------------------------------------------
+		re := regexp.MustCompile(`(.*?)(\.[0-9][0-9]*?_[0-9][0-9]*?)(\.part)`)
+		ch := re.FindStringSubmatch(chunk)
+		if len(ch) != 4 {
+			return errors.New("Bad chunk name format")
+		}
+		name := ch[1]
+		t := strings.Split(ch[2], "_")
+		total, err := strconv.Atoi(t[1])
+		if err != nil {
+			return err
+		}
+		allComplete := func() bool {
+			for i := 0; i <= total; i++ {
+				//fmt.Println("Check chank:", filepath.Join(volume.config.rootDir, target, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total)))
+				if _, err := os.Stat(filepath.Join(volume.config.rootDir, target, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total))); os.IsNotExist(err) {
+					return false
+				}
+			}
+			return true
+		}
+		complete := allComplete()
+		// -----------------------------------------------------------------
+
+		if complete {
+			volume.Chunkmerged = fmt.Sprintf(".%d_%s.%d_part", cid, name, total)
+			volume.Name = name
+		}
+		fmt.Println("Check chunk result:", complete)
+		volume.Added = []fileDir{}
+
+	} else {
+		var err error
+		re := regexp.MustCompile(`(\.[0-9][0-9]*?)(_.*?)(\.[0-9][0-9]*?_part)`)
+		ch := re.FindStringSubmatch(chunk)
+		if len(ch) != 4 {
+			return errors.New("Bad merged chunk name format")
+		}
+		cid, err = strconv.Atoi(ch[1][1:])
+		if err != nil {
+			return err
+		}
+		name := ch[2][1:]
+		total, err :=  strconv.Atoi(strings.TrimRight(ch[3][1:], "_part"))
+		if err != nil {
+			return err
+		}
+
+		targetPath := filepath.Join(volume.config.rootDir, target, name)
+		os.Rename(filepath.Join(volume.config.rootDir, target, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, 0, total)), targetPath)
+		f, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_APPEND, 0666)
+		if err != nil {
+			volume.Warning = append(volume.Warning, err.Error())
+			return err
+		}
+		defer f.Close()
+		for i := 1; i <= total; i++ {
+			chunkPath := filepath.Join(volume.config.rootDir, target, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total))
+			c, err := os.OpenFile(chunkPath, os.O_RDONLY, 0666)
+			if err != nil {
+				return err
+			}
+			cStat, err := c.Stat()
+			if err != nil {
+				return err
+			}
+			b := make([]byte,cStat.Size())
+			_, err = c.Read(b)
+			if err != nil {
+				return err
+			}
+			_, err = f.Write(b)
+			if err != nil {
+				return err
+			}
+			//fmt.Println("Read", chunkPath, "read:", nr, "bytes write:", nw, "bytes")
+			c.Close()
+			err = os.Remove(chunkPath)
+			if err != nil {
+				return err
+			}
+		}
+		fStat, err := f.Stat()
+		if err != nil {
+			return err
+		}
+		fInfo, err := volume._getFileDirInfo(targetPath, fStat)
+		if err != nil {
+			return err
+		}
+		volume.Added = append(volume.Added, fInfo)
+		//fmt.Println("End chunk merge files. Cid:", cid, "Target path:", targetPath, "Total:", total+1, "part")
+	}
+
+	return nil
+}
+
+func (volume *response) dim(path string) error {
 	var err error
 	target := filepath.Join(volume.config.rootDir, path)
 	volume.Dim, err = getImageDim(target)
@@ -160,11 +278,11 @@ func (volume *volumeResponse) dim(path string) error {
 	return nil
 }
 
-func (volume *volumeResponse) checkRight(path string) bool {
+func (volume *response) checkRight(path string) bool {
 	return volume._getRight(filepath.Join(volume.config.rootDir, path))
 }
 
-func (volume *volumeResponse) _getRight(path string) bool {
+func (volume *response) _getRight(path string) bool {
 	path = volume._trimRootDir(path)
 	if path == "" {
 		return true
@@ -180,20 +298,20 @@ func (volume *volumeResponse) _getRight(path string) bool {
 	return volume.config.defaultRight
 }
 
-func (volume *volumeResponse) _infoPath(path string) (volumeFileDir, error) {
+func (volume *response) _infoPath(path string) (fileDir, error) {
 	u, err := os.Open(path)
 	if err != nil {
-		return volumeFileDir{}, err
+		return fileDir{}, err
 	}
 	defer u.Close()
 	info, err := u.Stat()
 	if err != nil {
-		return volumeFileDir{}, err
+		return fileDir{}, err
 	}
 	return volume._getFileDirInfo(path, info)
 }
 
-func (volume *volumeResponse) _info(path string, info os.FileInfo, err error) error {
+func (volume *response) _info(path string, info os.FileInfo, err error) error {
 	if err != nil {
 		return err
 	}
@@ -207,22 +325,22 @@ func (volume *volumeResponse) _info(path string, info os.FileInfo, err error) er
 	return nil
 }
 
-func (volume *volumeResponse) _getFileDirInfo(path string, info os.FileInfo) (volumeFileDir, error) {
-	var p volumeFileDir
+func (volume *response) _getFileDirInfo(path string, info os.FileInfo) (fileDir, error) {
+	var p fileDir
 	p.Name = info.Name()
 	p.Size = info.Size()
 	p.Ts = info.ModTime().Unix()
 
 	if path != volume.config.rootDir {
-		if volume._trimRootDir(filepath.Join(path, ".." + string(filepath.Separator))) != "" { //ToDo
-			p.Phash = createHash("l0", volume._trimRootDir(filepath.Join(path, ".." + string(filepath.Separator))))
+		if volume._trimRootDir(filepath.Join(path, ".." + string(os.PathSeparator))) != "" { //ToDo
+			p.Phash = createHash("l0", volume._trimRootDir(filepath.Join(path, ".." + string(os.PathSeparator))))
 		} else {
-			p.Phash = createHash("l0", string(filepath.Separator))
+			p.Phash = createHash("l0", string(os.PathSeparator))
 		}
 		p.Hash = createHash("l0", volume._trimRootDir(path))
 	} else {
 		p.Isroot = 1
-		p.Hash = createHash("l0", string(filepath.Separator))
+		p.Hash = createHash("l0", string(os.PathSeparator))
 		p.Phash = ""
 	}
 	if info.IsDir() {
@@ -230,7 +348,7 @@ func (volume *volumeResponse) _getFileDirInfo(path string, info os.FileInfo) (vo
 		p.Volumeid = "l0_"
 		u, err := os.Open(path)
 		if err != nil {
-			return volumeFileDir{}, err
+			return fileDir{}, err
 		}
 		defer u.Close()
 		n, _ := u.Readdir(0)
@@ -244,7 +362,7 @@ func (volume *volumeResponse) _getFileDirInfo(path string, info os.FileInfo) (vo
 		}
 		p.Dirs = hasDir()
 
-		if path == "/" {
+		if path == string(os.PathSeparator) {
 			p.Phash = ""
 			p.Isroot = 1
 			p.Locked = 1
@@ -260,232 +378,6 @@ func (volume *volumeResponse) _getFileDirInfo(path string, info os.FileInfo) (vo
 	return p, nil
 }
 
-func (volume *volumeResponse) _trimRootDir(path string) string {
+func (volume *response) _trimRootDir(path string) string {
 	return strings.TrimPrefix(path, volume.config.rootDir)
 }
-
-/*
-func (response *volumeResponse) walk(path string, info os.FileInfo, err error) error {
-	if err != nil {
-		return err
-	}
-	var p volumeFileDir
-	p.Name = info.Name()
-	p.Size = info.Size()
-	p.Ts = info.ModTime().Unix()
-	p.Hash = createHash("l0", path)
-	p.Phash = createHash("l0", filepath.Join(path, "../"))
-	if info.IsDir() {
-		p.Mime = "directory"
-		p.Volumeid = "l0_"
-		u, err := os.Open(filepath.Join(basePath, path))
-		if err != nil {
-			return err
-		}
-		defer u.Close()
-		n, _ := u.Readdir(0)
-		hasDir := func() byte {
-			for _, t := range n {
-				if t.IsDir() {
-					return 1
-				}
-			}
-			return 0
-		}
-		p.Dirs = hasDir()
-
-		if path == "/" {
-			p.Phash = ""
-			p.Isroot = 1
-			p.Locked = 1
-		}
-	} else {
-		p.Mime = mime.TypeByExtension(filepath.Ext(info.Name()))
-	}
-
-	//ToDo get permission
-	p.Read = 1
-	p.Write = 1
-
-	response.Files = append(response.Files, p)
-
-	return nil
-}
-
-func parseInfo(path string, info os.FileInfo, err error) volumeFileDir {
-	var p volumeFileDir
-	if err != nil {
-		log.Print(err)
-		return p
-	}
-	p.Name = info.Name()
-	p.Size = info.Size()
-	p.Ts = info.ModTime().Unix()
-	p.Hash = createHash("l0", path)
-	p.Phash = createHash("l0", filepath.Join(path, "../"))
-	if info.IsDir() {
-		p.Mime = "directory"
-		p.Volumeid = "l0_"
-		u, err := os.Open(filepath.Join(basePath, path))
-		if err != nil {
-			return volumeFileDir{}
-		}
-		defer u.Close()
-		n, _ := u.Readdir(0)
-		hasDir := func() byte {
-			for _, t := range n {
-				if t.IsDir() {
-					return 1
-				}
-			}
-			return 0
-		}
-		p.Dirs = hasDir()
-
-		if path == "/" {
-			p.Phash = ""
-			p.Isroot = 1
-			p.Locked = 1
-		}
-	} else {
-		p.Mime = mime.TypeByExtension(filepath.Ext(info.Name()))
-	}
-
-	//ToDo get permission
-	p.Read = 1
-	p.Write = 1
-
-	return p
-
-}
-
-
-
-func volumeOpenDir(path string, response *volumeResponse) {
-
-	response.Cwd = fileInfo(path)
-
-	if isDir(path) {
-		response.Files = parents(path)
-	}
-}
-
-func parents(path string) []volumeFileDir {
-	tree := []volumeFileDir{fileInfo("/")}
-	from := path
-	for filepath.Base(path) != "/" {
-		ls, err := listDir(path)
-		if err != nil {
-			return tree
-		}
-		for _, l := range ls {
-			t := filepath.Join(path,l)
-			if t != from {
-				tree = append(tree, fileInfo(t))
-			}
-		}
-		path = filepath.Join(path, "../")
-	}
-
-	ls, err := listDir("/")
-	if err != nil {
-		return tree
-	}
-	for _, l := range ls {
-		t := filepath.Join(path,l)
-		if t != from {
-			tree = append(tree, fileInfo(t))
-		}
-
-	}
-	return tree
-}
-
-
-func listDir(path string) ([]string, error) {
-	u, err := os.Open(filepath.Join(basePath, path))
-	if err != nil {
-		return []string{}, err
-	}
-	defer u.Close()
-
-	return u.Readdirnames(0)
-}
-
-func getFile(path string) (string, []byte, error) {
-	path = filepath.Join(basePath, path)
-	data, err := ioutil.ReadFile(path)
-	return filepath.Base(path), data, err
-}
-
-
-func fileInfo(path string) volumeFileDir {
-	var p volumeFileDir
-	u, err := os.Open(filepath.Join(basePath, path))
-	if err != nil {
-		return volumeFileDir{}
-	}
-	defer u.Close()
-
-	s, err := u.Stat()
-	if err != nil {
-		return volumeFileDir{}
-	}
-	p.Name = s.Name()
-	p.Size = s.Size()
-	p.Ts = s.ModTime().Unix()
-	p.Hash = "l0_" + encode64(path)
-	p.Phash = "l0_" + encode64(filepath.Join(path, "../"))
-	if s.IsDir() {
-		p.Mime = "directory"
-		p.Volumeid = "l0_"
-
-		n, _ := u.Readdir(0)
-		hasDir := func() byte {
-			for _, t := range n {
-				if t.IsDir() {
-					return 1
-				}
-			}
-			return 0
-		}
-		p.Dirs = hasDir()
-
-		if path == "/" {
-			p.Phash = ""
-			p.Isroot = 1
-			p.Locked = 1
-		}
-	} else {
-		buf, _ := ioutil.ReadFile(filepath.Join(basePath, path))
-		kind, err  := filetype.Match(buf)
-		if err == nil {
-			p.Mime = kind.MIME.Value
-		}
-	}
-
-	//ToDo get permission
-	p.Read = 1
-	p.Write = 1
-
-	return p
-}
-
-func isDir(path string) (bool) {
-	u, err := os.Open(filepath.Join(basePath, path))
-	if err != nil {
-		return false
-	}
-	defer u.Close()
-
-	s, err := u.Stat()
-	if err != nil {
-		return false
-	}
-	return s.IsDir()
-}
-
-func isFile(path string) (bool) {
-	return !isDir(path)
-}
-*/
