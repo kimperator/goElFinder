@@ -1,4 +1,4 @@
-package elFinder
+package goElFinder
 
 import (
 	"path/filepath"
@@ -11,12 +11,16 @@ import (
 	"strconv"
 	"regexp"
 	"errors"
+	"log"
 )
 
 // Config functions
 func (volume *response) setRoot(path string) {
-	volume.config.rootDir, _ = filepath.Abs(path)
-	fmt.Println(volume.config.rootDir)
+	var err error
+	volume.config.rootDir, err = filepath.Abs(path)
+	if err != nil {
+		log.Print(err)
+	}
 }
 
 func (volume *response) allowDirs(dirs []string) {
@@ -26,6 +30,7 @@ func (volume *response) allowDirs(dirs []string) {
 	for _, v := range dirs {
 		volume.config.dirsRight[v] = true
 	}
+
 }
 
 func (volume *response) denyDirs(dirs []string) {
@@ -117,9 +122,28 @@ func (volume *response) rename(path, name string) error {
 	if err != nil {
 		return err
 	}
+	fmt.Println("Rename:", filepath.Join(volume.config.rootDir, path), "to", newPath)
 	added, err := volume._infoPath(newPath)
 	volume.Added = append(volume.Added, added)
 	volume.Removed = append(volume.Removed, createHash(volume.config.id, path))
+	return nil
+}
+
+func (volume *response) renames(target, suffix string, renames []string) error {
+	fmt.Println("Target:", target, "Suffix:", suffix, "Renames:", renames)
+	if len(renames) != 0 {
+		for _, r := range renames  {
+			oldPath := filepath.Join(volume.config.rootDir, target, r)
+			newPath := filepath.Join(volume.config.rootDir, target, strings.TrimRight(r, filepath.Ext(r)) + suffix + filepath.Ext(r))
+			fmt.Println("Renames:", oldPath, "to", newPath)
+			err := os.Rename(oldPath, newPath) //ToDo suffix clean
+			if err != nil {
+				return err
+			}
+			added, err := volume._infoPath(newPath)
+			volume.Added = append(volume.Added, added)
+		}
+	}
 	return nil
 }
 
@@ -149,117 +173,130 @@ func (volume *response) upload(path, name string, file io.Reader) error {
 	return nil
 }
 
-func (volume *response) chunkUpload(cid int, target, chunk string, file io.Reader) error {
-	//	fmt.Println("Chunk", cid, target, chunk, file)
-	if cid != 0 {
-		if file != nil {
-			tmpPath := filepath.Join(volume.config.rootDir, target, fmt.Sprintf(".%d_%s~", cid, chunk))
-			f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE, 0666)
-			if err != nil {
-				volume.Warning = append(volume.Warning, err.Error())
-				return err
-			}
-			_, err = io.Copy(f, file)
-			if err != nil {
-				volume.Warning = append(volume.Warning, err.Error())
-				return err
-			}
-			f.Close()
-			os.Rename(tmpPath, filepath.Join(volume.config.rootDir, target, fmt.Sprintf(".%d_%s", cid, chunk)))
-		}
-
-		// check complete ---------------------------------------------------
-		re := regexp.MustCompile(`(.*?)(\.[0-9][0-9]*?_[0-9][0-9]*?)(\.part)`)
-		ch := re.FindStringSubmatch(chunk)
-		if len(ch) != 4 {
-			return errors.New("Bad chunk name format")
-		}
-		name := ch[1]
-		t := strings.Split(ch[2], "_")
-		total, err := strconv.Atoi(t[1])
-		if err != nil {
-			return err
-		}
-		allComplete := func() bool {
-			for i := 0; i <= total; i++ {
-				if _, err := os.Stat(filepath.Join(volume.config.rootDir, target, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total))); os.IsNotExist(err) {
-					return false
-				}
-			}
-			return true
-		}
-		complete := allComplete()
-		// -----------------------------------------------------------------
-
-		if complete {
-			volume.Chunkmerged = fmt.Sprintf(".%d_%s.%d_part", cid, name, total)
-			volume.Name = name
-		}
-		fmt.Println("Check chunk result:", complete)
-		volume.Added = []fileDir{}
-
-	} else {
-		var err error
-		re := regexp.MustCompile(`(\.[0-9][0-9]*?)(_.*?)(\.[0-9][0-9]*?_part)`)
-		ch := re.FindStringSubmatch(chunk)
-		if len(ch) != 4 {
-			return errors.New("Bad merged chunk name format")
-		}
-		cid, err = strconv.Atoi(ch[1][1:])
-		if err != nil {
-			return err
-		}
-		name := ch[2][1:]
-		total, err :=  strconv.Atoi(strings.TrimRight(ch[3][1:], "_part"))
-		if err != nil {
-			return err
-		}
-
-		targetPath := filepath.Join(volume.config.rootDir, target, name)
-		os.Rename(filepath.Join(volume.config.rootDir, target, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, 0, total)), targetPath)
-		f, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_APPEND, 0666)
+func (volume *response) chunkUpload(cid int, path, chunk string, file io.Reader) error {
+	if file != nil {
+		tmpPath := filepath.Join(volume.config.rootDir, path, fmt.Sprintf(".%d_%s~", cid, chunk))
+		f, err := os.OpenFile(tmpPath, os.O_WRONLY | os.O_CREATE, 0666)
 		if err != nil {
 			volume.Warning = append(volume.Warning, err.Error())
 			return err
 		}
-		defer f.Close()
-		for i := 1; i <= total; i++ {
-			chunkPath := filepath.Join(volume.config.rootDir, target, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total))
-			c, err := os.OpenFile(chunkPath, os.O_RDONLY, 0666)
-			if err != nil {
-				return err
-			}
-			cStat, err := c.Stat()
-			if err != nil {
-				return err
-			}
-			b := make([]byte,cStat.Size())
-			_, err = c.Read(b)
-			if err != nil {
-				return err
-			}
-			_, err = f.Write(b)
-			if err != nil {
-				return err
-			}
-			c.Close()
-			err = os.Remove(chunkPath)
-			if err != nil {
-				return err
-			}
-		}
-		fStat, err := f.Stat()
+		_, err = io.Copy(f, file)
 		if err != nil {
+			volume.Warning = append(volume.Warning, err.Error())
 			return err
 		}
-		fInfo, err := volume._getFileDirInfo(targetPath, fStat)
-		if err != nil {
-			return err
-		}
-		volume.Added = append(volume.Added, fInfo)
+		f.Close()
+		os.Rename(tmpPath, filepath.Join(volume.config.rootDir, path, fmt.Sprintf(".%d_%s", cid, chunk)))
 	}
 
+	// check complete ---------------------------------------------------
+	re := regexp.MustCompile(`(.*?)(\.[0-9][0-9]*?_[0-9][0-9]*?)(\.part)`)
+	ch := re.FindStringSubmatch(chunk)
+	if len(ch) != 4 {
+		return errors.New("Bad chunk name format")
+	}
+	name := ch[1]
+	t := strings.Split(ch[2], "_")
+	total, err := strconv.Atoi(t[1])
+	if err != nil {
+		return err
+	}
+	allComplete := func() bool {
+		for i := 0; i <= total; i++ {
+			if _, err := os.Stat(filepath.Join(volume.config.rootDir, path, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total))); os.IsNotExist(err) {
+				return false
+			}
+		}
+		return true
+	}
+	complete := allComplete()
+	// -----------------------------------------------------------------
+
+	if complete {
+		volume.Chunkmerged = fmt.Sprintf(".%d_%s.%d_part", cid, name, total)
+		volume.Name = name
+	}
+	fmt.Println("Check chunk result:", complete)
+	if volume.Added == nil {
+		volume.Added = []fileDir{}
+	}
 	return nil
+}
+
+func (volume *response) chunkMerge(target, chunk string) error {
+	var err error
+	re := regexp.MustCompile(`(\.[0-9][0-9]*?)(_.*?)(\.[0-9][0-9]*?_part)`)
+	ch := re.FindStringSubmatch(chunk)
+	if len(ch) != 4 {
+		return errors.New("Bad merged chunk name format")
+	}
+
+	cid, err := strconv.Atoi(ch[1][1:])
+	if err != nil {
+		return err
+	}
+	name := ch[2][1:]
+	total, err :=  strconv.Atoi(strings.TrimRight(ch[3][1:], "_part"))
+	if err != nil {
+		return err
+	}
+
+	targetPath := filepath.Join(volume.config.rootDir, target, name)
+	os.Rename(filepath.Join(volume.config.rootDir, target, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, 0, total)), targetPath)
+	f, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		volume.Warning = append(volume.Warning, err.Error())
+		return err
+	}
+	defer f.Close()
+	for i := 1; i <= total; i++ {
+		chunkPath := filepath.Join(volume.config.rootDir, target, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total))
+		c, err := os.OpenFile(chunkPath, os.O_RDONLY, 0666)
+		if err != nil {
+			return err
+		}
+		cStat, err := c.Stat()
+		if err != nil {
+			return err
+		}
+		b := make([]byte,cStat.Size())
+		_, err = c.Read(b)
+		if err != nil {
+			return err
+		}
+		_, err = f.Write(b)
+		if err != nil {
+			return err
+		}
+		c.Close()
+		err = os.Remove(chunkPath)
+		if err != nil {
+			return err
+		}
+	}
+	fStat, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	fInfo, err := volume._getFileDirInfo(targetPath, fStat)
+	if err != nil {
+		return err
+	}
+	volume.Added = append(volume.Added, fInfo)
+
+	return nil
+}
+
+func (volume *response) ls(target string, intersect []string) {
+	volume.List = []string{}
+	for _, i := range intersect {
+		_, err := os.Stat(filepath.Join(volume.config.rootDir, target, i));
+		fmt.Println("File:", filepath.Join(volume.config.rootDir, target, i), "is", !os.IsNotExist(err))
+		if !os.IsNotExist(err) {
+			volume.List = append(volume.List, i)
+		}
+	}
 }
 
 func (volume *response) dim(path string) error {
@@ -339,7 +376,7 @@ func (volume *response) _getFileDirInfo(path string, info os.FileInfo) (fileDir,
 	}
 	if info.IsDir() {
 		p.Mime = "directory"
-		p.Volumeid = "volume.config.id_"
+		p.Volumeid = volume.config.id
 		u, err := os.Open(path)
 		if err != nil {
 			return fileDir{}, err

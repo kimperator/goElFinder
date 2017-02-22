@@ -1,23 +1,4 @@
-package elFinder
-
-/*
-type volumeParents struct {
-	Tree []volumeFileDir `json:"tree"`
-}
-
-
-type volumeDriver interface {
-	name() string
-	root() string
-
-	isDir(path string) bool
-	isFile(path string) bool
-	fileInfo(path string) volumeFileDir
-	listDir(path string) ([]string, error)
-	file(path string) (string, []byte, error)
-	mkdir(target, name string) (error)
-}
-*/
+package goElFinder
 
 type Volume struct {
 	Name string
@@ -31,7 +12,7 @@ type Config map[string]Volume
 
 type volumeConfig struct {
 	id string
-	rootDir string // [name]realPath
+	rootDir string // ToDo [name]realPath???
 	dirsRight map[string]bool
 	defaultRight bool
 }
@@ -53,6 +34,7 @@ type response struct {
 	Warning     []string `json:"warning,omitempty"`         // for upload
 	Changed     []fileDir `json:"changed,omitempty"`        // for mkdir
 	Hashes      map[string]string `json:"hashes,omitempty"` // for mkdir
+	List 	    []string `json:"list,omitempty"` 		// for ls
 
 	Name        string `json:"_name,omitempty"`
 	Chunkmerged string `json:"_chunkmerged,omitempty"`

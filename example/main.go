@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
-	"github.com/supme/elFinder"
+	"github.com/supme/goElFinder"
 	"fmt"
 )
 
@@ -13,10 +13,14 @@ func main() {
 
 	config := elFinder.Config{}
 	config["l0"] = elFinder.Volume {
-		Root: "./files",
+		Root: "./files/1",
 		AllowDirs: []string{"/Allow"},
 		DenyDirs:  []string{"/Deny"},
 		DefaultRight: false,
+	}
+	config["l1"] = elFinder.Volume {
+		Root: "./files/2",
+		DefaultRight: true,
 	}
 	mux.Handle("/connector", elFinder.NetHttp(config))
 

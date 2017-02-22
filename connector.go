@@ -1,4 +1,4 @@
-package elFinder
+package goElFinder
 
 import (
 	"net/http"
@@ -11,7 +11,23 @@ import (
 
 const APIver = "2.1"
 
+/*
+ElFinder connector handler
 
+Example code:
+	config := elFinder.Config{}
+	config["l0"] = elFinder.Volume {
+		Root: "./files/1",
+		AllowDirs: []string{"/Allow"},
+		DenyDirs:  []string{"/Deny"},
+		DefaultRight: false,
+	}
+	config["l1"] = elFinder.Volume {
+		Root: "./files/2",
+		DefaultRight: true,
+	}
+	mux.Handle("/connector", elFinder.NetHttp(config))
+ */
 func NetHttp(config Config) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var (
@@ -22,6 +38,9 @@ func NetHttp(config Config) http.Handler {
 			dirs []string
 			target string
 			targets []string
+			renames []string
+			suffix string
+			intersect []string
 			chunk string
 			uploadPath []string
 			cid int
@@ -48,7 +67,10 @@ func NetHttp(config Config) http.Handler {
 				name = r.Form["name"][0]
 			}
 			if r.Form["dirs[]"] != nil {
-				dirs = r.Form["dirs[]"]
+				dirs = r.Form["dirs[]"] // ToDo check rights
+			}
+			if r.Form["intersect[]"] != nil {
+				intersect = r.Form["intersect[]"] // ToDo check rights
 			}
 			if r.Form["target"] != nil {
 				volume, target, err = parseHash(config, r.Form["target"][0])
@@ -138,7 +160,12 @@ func NetHttp(config Config) http.Handler {
 					uploadPath = append(uploadPath, p)
 				}
 			}
-
+			if r.PostForm["renames[]"] != nil {
+				renames = r.PostForm["renames[]"]
+			}
+			if r.PostForm["suffix"] != nil {
+				suffix = r.PostForm["suffix"][0]
+			}
 			if r.PostForm["chunk"] != nil {
 				chunk = r.PostForm["chunk"][0]
 			}
@@ -173,6 +200,7 @@ func NetHttp(config Config) http.Handler {
 		case "tree":
 		case "parents":
 		case "ls":
+			volume.ls(target, intersect)
 		case "tmb":
 		case "size":
 
@@ -223,22 +251,30 @@ func NetHttp(config Config) http.Handler {
 		case "duplicate":
 		case "paste":
 		case "upload":
-			if chunk != "" {
+			if r.PostForm["chunk"] != nil {
 				var (
 
 					file io.Reader
 					err error
 				)
-
-				if r.MultipartForm.File["upload[]"] != nil {
-					file, err = r.MultipartForm.File["upload[]"][0].Open()
+				if r.PostForm["cid"] == nil {
+					if len(renames) != 0 {
+						fmt.Println("Result renames",volume.renames(target, suffix, renames))
+					}
+					fmt.Println("Result chunk merge", volume.chunkMerge(target, chunk))
+				}
+				for i := range r.MultipartForm.File["upload[]"] {
+					file, err = r.MultipartForm.File["upload[]"][i].Open()
 					if err != nil {
 						fmt.Println(err)
 					}
+					fmt.Println("Result chunk upload", volume.chunkUpload(cid, uploadPath[i], chunk, file))
 				}
 
-				fmt.Println("Result chunk", volume.chunkUpload(cid, uploadPath[0], chunk, file))
 			} else {
+				if len(renames) != 0 {
+					fmt.Println("Result renames",volume.renames(target, suffix, renames))
+				}
 				esl := []string{}
 				for i, f := range r.MultipartForm.File["upload[]"] {
 					file, _ := f.Open()
@@ -246,6 +282,7 @@ func NetHttp(config Config) http.Handler {
 					if e != nil {
 						esl = append(esl, e.Error())
 					}
+					renames = []string{}
 				}
 				if len(esl) > 0 {
 					volume.Error = esl

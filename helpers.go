@@ -1,4 +1,4 @@
-package elFinder
+package goElFinder
 
 import (
 	"encoding/base64"
@@ -33,7 +33,6 @@ func createHash(volumeId, path string) string {
 func parseHash(config Config, target string) (volume response, path string, err error) { //ToDo check file name
 	var volumeId string
 	splitTarget := strings.SplitN(target, "_", 2)
-	fmt.Println(splitTarget)
 	if len(splitTarget) != 2 {
 		return volume, path, errors.New("Bad target")
 	}
