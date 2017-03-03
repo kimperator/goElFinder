@@ -6,23 +6,15 @@ type Volume struct {
 	DefaultRight bool
 	AllowDirs []string
 	DenyDirs []string
-}
+} //ToDo WebDir and alias
 
-type Config map[string]Volume
-
-type volumeConfig struct {
-	id string
-	rootDir string // ToDo [name]realPath???
-	dirsRight map[string]bool
-	defaultRight bool
-}
 
 type response struct {
-	config      volumeConfig
+	config config
 
-	Api         string `json:"api,omitempty"`               // The version number of the protocol, must be >= 2.1, ATTENTION - return api ONLY for init request!
-	Cwd         fileDir `json:"cwd,omitempty"`              // Current Working Directory - information about the current directory. Information about File/Directory
-	Files       []fileDir `json:"files,omitempty"`          // array of objects - files and directories in current directory. If parameter tree == true, then added to the folder of the directory tree to a given depth. The order of files is not important. Note you must include the top-level volume objects here as well (i.e. cwd is repeated here, in addition to other volumes)
+	Api    string `json:"api,omitempty"`               // The version number of the protocol, must be >= 2.1, ATTENTION - return api ONLY for init request!
+	Cwd    fileDir `json:"cwd,omitempty"`              // Current Working Directory - information about the current directory. Information about File/Directory
+	Files  []fileDir `json:"files,omitempty"`          // array of objects - files and directories in current directory. If parameter tree == true, then added to the folder of the directory tree to a given depth. The order of files is not important. Note you must include the top-level volume objects here as well (i.e. cwd is repeated here, in addition to other volumes)
 	NetDrivers  []string `json:"netDrivers,omitempty"`      // Network protocols list which can be mounted on the fly (using netmount command). Now only ftp supported.
 	Options     options `json:"options,omitempty"`
 	UplMaxFile  string `json:"uplMaxFile,omitempty"`        // Allowed upload max number of file per request. For example 20
@@ -41,6 +33,8 @@ type response struct {
 
 	Removed     []string `json:"removed,omitempty"`         // for remove, rename
 
+	Images     map[string]string `json:"images,omitempty"`  // for tmb
+
 	Error       interface{} `json:"error,omitempty"`
 }
 
@@ -50,9 +44,17 @@ type options struct {
 	TmbUrl string `json:"tmbURL,omitempty"` // Thumbnails folder URL
 	Separator string `json:"separator,omitempty"` // Path separator for the current volume
 	Disabled []string `json:"disabled,omitempty"`  // List of commands not allowed (disabled) on this volume
+	Archivers archivers `json:"archivers,omitempty"`
 	// ToDo https://github.com/Studio-42/elFinder/wiki/Client-Server-API-2.1#open
 
 }
+
+type archivers struct {
+	Create []string `json:"create,omitempty"` // List of the mime type of archives which can be created
+	Extract []string `json:"extract,omitempty"` // List of the mime types that can be extracted / unpacked
+	Createext map[string]string `json:"createext,omitempty"` // Map list of { MimeType: FileExtention }
+}
+
 
 type fileDir struct {
 	Name string `json:"name,omitempty"` // name of file/dir. Required
@@ -74,6 +76,6 @@ type fileDir struct {
 	Cssclr string `json:"cssclr,omitempty"` // CSS class name for holder icon. Optionally. It can include to options.
 	Volumeid string `json:"volumeid,omitempty"` // Volume id. For directory only. It can include to options.
 	Netkey string `json:"netkey,omitempty"` // Netmount volume unique key, Required for netmount volume. It can include to options.
-//	Options volumeOptions `json:"options,omitempty"` // For volume root only. This value is same to cwd.options.
+//	Options options `json:"options,omitempty"` // For volume root only. This value is same to cwd.options.
 }
 

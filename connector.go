@@ -35,6 +35,8 @@ func NetHttp(config Config) http.Handler {
 			init, tree bool
 			cmd string
 			name string
+			mode, bg string
+			width, height, x, y, degree, quality int
 			dirs []string
 			target string
 			targets []string
@@ -72,8 +74,32 @@ func NetHttp(config Config) http.Handler {
 			if r.Form["intersect[]"] != nil {
 				intersect = r.Form["intersect[]"] // ToDo check rights
 			}
+			if r.Form["mode"] != nil {
+				mode = r.Form["mode"][0]
+			}
+			if r.Form["width"] != nil {
+				width, _  = strconv.Atoi(r.Form["width"][0])
+			}
+			if r.Form["height"] != nil {
+				height, _  = strconv.Atoi(r.Form["height"][0])
+			}
+			if r.Form["x"] != nil {
+				x, _  = strconv.Atoi(r.Form["x"][0])
+			}
+			if r.Form["y"] != nil {
+				y, _  = strconv.Atoi(r.Form["y"][0])
+			}
+			if r.Form["degree"] != nil {
+				degree, _  = strconv.Atoi(r.Form["degree"][0])
+			}
+			if r.Form["bg"] != nil {
+				bg = r.Form["bg"][0]
+			}
+			/*if r.Form["quality"] != nil {
+				quality, _  = strconv.Atoi(r.Form["quality"][0])
+			}*/
 			if r.Form["target"] != nil {
-				volume, target, err = parseHash(config, r.Form["target"][0])
+				volume, target, err = parsePathHash(config, r.Form["target"][0])
 				if err != nil {
 					log.Println(err)
 				}
@@ -86,7 +112,7 @@ func NetHttp(config Config) http.Handler {
 			} else if r.Form["targets[]"] != nil {
 				for _, ft := range r.Form["targets[]"] {
 					var p string
-					volume, p, err = parseHash(config, ft)
+					volume, p, err = parsePathHash(config, ft)
 					if err != nil {
 						log.Println(err)
 					}
@@ -112,7 +138,7 @@ func NetHttp(config Config) http.Handler {
 			r.ParseMultipartForm(32 << 20) // ToDo check 8Mb
 			fmt.Println("POST", r.PostForm)
 			if r.PostForm["target"] != nil {
-				volume, target, err = parseHash(config, r.PostForm["target"][0])
+				volume, target, err = parsePathHash(config, r.PostForm["target"][0])
 				if err != nil {
 					log.Println(err)
 				}
@@ -125,7 +151,7 @@ func NetHttp(config Config) http.Handler {
 			} else if r.PostForm["targets[]"] != nil {
 				for _, ft := range r.PostForm["targets[]"] {
 					var p string
-					volume, p, err = parseHash(config, ft)
+					volume, p, err = parsePathHash(config, ft)
 					if err != nil {
 						log.Println(err)
 					}
@@ -147,7 +173,7 @@ func NetHttp(config Config) http.Handler {
 			if r.PostForm["upload_path[]"] != nil {
 				for i := range r.PostForm["upload_path[]"] {
 					var p string
-					volume, p, err = parseHash(config, r.PostForm["upload_path[]"][i])
+					volume, p, err = parsePathHash(config, r.PostForm["upload_path[]"][i])
 					if err != nil {
 						log.Println(err)
 					}
@@ -202,6 +228,10 @@ func NetHttp(config Config) http.Handler {
 		case "ls":
 			volume.ls(target, intersect)
 		case "tmb":
+			err := volume.tmb(targets)
+			if err != nil {
+				volume.Error = err.Error()
+			}
 		case "size":
 
 		case "dim":
@@ -261,7 +291,7 @@ func NetHttp(config Config) http.Handler {
 					if len(renames) != 0 {
 						fmt.Println("Result renames",volume.renames(target, suffix, renames))
 					}
-					fmt.Println("Result chunk merge", volume.chunkMerge(target, chunk))
+					fmt.Println("Result chunk merge", volume.chunkMerge(uploadPath[0], chunk))
 				}
 				for i := range r.MultipartForm.File["upload[]"] {
 					file, err = r.MultipartForm.File["upload[]"][i].Open()
@@ -297,6 +327,18 @@ func NetHttp(config Config) http.Handler {
 		case "search":
 		case "info":
 		case "resize":
+			switch mode {
+			case "resize":
+				err = volume.resize(target, width, height)
+			case "crop":
+				err = volume.crop(target, x, y, width, height)
+			case "rotate":
+				err = volume.rotate(target, bg, degree)
+			}
+			_ = quality
+			if err != nil {
+				volume.Error = err.Error()
+			}
 		case "url":
 		//	case "netmount":
 		case "zipdl":

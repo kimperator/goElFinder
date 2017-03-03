@@ -10,6 +10,7 @@ import (
 func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/elf/", http.StripPrefix("/elf/", http.FileServer(http.Dir("./elf/"))))
+	mux.Handle("/files/", http.StripPrefix("/files/", http.FileServer(http.Dir("./files/"))))
 
 	config := goElFinder.Config{}
 	config["l0"] = goElFinder.Volume {
