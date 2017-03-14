@@ -1,18 +1,17 @@
 package goElFinder
 
 import (
-	"fmt"
-	"crypto/sha1"
 	"path/filepath"
+	"os"
 )
 
-func (self *response) tmb(targets []string) error {
+func (self *response) tmb(id string, path map[string]string) error {
 	self.Images= map[string]string{}
-	for _, t := range targets {
-		//tmb := encode64(fmt.Sprintf("%x", sha1.Sum([]byte(filepath.Base(t)))))+filepath.Ext(t)
+	for i, t := range path {
 		tmb := encode64(t)
-		stmb := fmt.Sprintf("%x", sha1.Sum([]byte(filepath.Base(t))))+filepath.Ext(t)
-		err := resizeImage(filepath.Join(self.config.rootDir, t), filepath.Join(self.config.rootDir, ".tmb", stmb), 48, 0)
+		stmb := tmb + filepath.Ext(t)
+		os.MkdirAll(filepath.Join(conf[i].Root, filepath.Dir(t), ".tmb"), 0755)
+		err := resizeImage(filepath.Join(conf[i].Root, t), filepath.Join(conf[i].Root, filepath.Dir(t), ".tmb", stmb), 48, 0)
 		if err != nil {
 			return err
 		}
@@ -21,9 +20,9 @@ func (self *response) tmb(targets []string) error {
 	return nil
 }
 
-func (self *response) dim(path string) error {
+func (self *response) dim(id, path string) error {
 	var err error
-	target := filepath.Join(self.config.rootDir, path)
+	target := filepath.Join(conf[id].Root, path)
 	self.Dim, err = getImageDim(target)
 	if err != nil {
 		return err
@@ -31,13 +30,13 @@ func (self *response) dim(path string) error {
 	return nil
 }
 
-func (self *response) resize(path string, width, height int) error {
-	img := filepath.Join(self.config.rootDir, path)
+func (self *response) resize(id, path string, width, height int) error {
+	img := filepath.Join(conf[id].Root, path)
 	err := resizeImage(img, img, width, height)
 	if err != nil {
 		return err
 	}
-	changed, err := self._infoPath(img)
+	changed, err := _infoFileDir(id,path)
 	if err != nil {
 		return err
 	}
@@ -46,13 +45,13 @@ func (self *response) resize(path string, width, height int) error {
 }
 
 
-func (self *response) crop(path string, x, y, width, height int) error {
-	img := filepath.Join(self.config.rootDir, path)
+func (self *response) crop(id, path string, x, y, width, height int) error {
+	img := filepath.Join(conf[id].Root, path)
 	err := cropImage(img, img, x, y, width, height)
 	if err != nil {
 		return err
 	}
-	changed, err := self._infoPath(img)
+	changed, err := _infoFileDir(id, path)
 	if err != nil {
 		return err
 	}
@@ -60,13 +59,13 @@ func (self *response) crop(path string, x, y, width, height int) error {
 	return nil
 }
 
-func (self *response) rotate(path, bg string, degree int) error {
-	img := filepath.Join(self.config.rootDir, path)
+func (self *response) rotate(id, path, bg string, degree int) error {
+	img := filepath.Join(conf[id].Root, path)
 	err := rotateImage(img, img, bg, degree)
 	if err != nil {
 		return err
 	}
-	changed, err := self._infoPath(img)
+	changed, err := _infoFileDir(id, path)
 	if err != nil {
 		return err
 	}

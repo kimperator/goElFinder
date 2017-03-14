@@ -11,9 +11,8 @@ import (
 	"errors"
 )
 
-func (self *response) upload(path, name string, file io.Reader) error {
-	path = filepath.Join(self.config.rootDir, path, name)
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0666)
+func (self *response) upload(id, path, name string, file io.Reader) error {
+	f, err := os.OpenFile(filepath.Join(conf[id].Root, path, name), os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		self.Warning = append(self.Warning, err.Error())
 		return err
@@ -24,12 +23,7 @@ func (self *response) upload(path, name string, file io.Reader) error {
 		self.Warning = append(self.Warning, err.Error())
 		return err
 	}
-	info, err := f.Stat()
-	if err != nil {
-		self.Warning = append(self.Warning, err.Error())
-		return err
-	}
-	i, err := self._getFileDirInfo(path, info)
+	i, err := _infoFileDir(id, path)
 	if err != nil {
 		self.Warning = append(self.Warning, err.Error())
 	}
@@ -37,9 +31,9 @@ func (self *response) upload(path, name string, file io.Reader) error {
 	return nil
 }
 
-func (self *response) chunkUpload(cid int, path, chunk string, file io.Reader) error {
+func (self *response) chunkUpload(cid int, id, path, chunk string, file io.Reader) error {
 	if file != nil {
-		tmpPath := filepath.Join(self.config.rootDir, path, fmt.Sprintf(".%d_%s~", cid, chunk))
+		tmpPath := filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s~", cid, chunk))
 		f, err := os.OpenFile(tmpPath, os.O_WRONLY | os.O_CREATE, 0666)
 		if err != nil {
 			self.Warning = append(self.Warning, err.Error())
@@ -51,7 +45,7 @@ func (self *response) chunkUpload(cid int, path, chunk string, file io.Reader) e
 			return err
 		}
 		f.Close()
-		os.Rename(tmpPath, filepath.Join(self.config.rootDir, path, fmt.Sprintf(".%d_%s", cid, chunk)))
+		os.Rename(tmpPath, filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s", cid, chunk)))
 	}
 
 	// check complete ---------------------------------------------------
@@ -68,7 +62,7 @@ func (self *response) chunkUpload(cid int, path, chunk string, file io.Reader) e
 	}
 	allComplete := func() bool {
 		for i := 0; i <= total; i++ {
-			if _, err := os.Stat(filepath.Join(self.config.rootDir, path, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total))); os.IsNotExist(err) {
+			if _, err := os.Stat(filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total))); os.IsNotExist(err) {
 				return false
 			}
 		}
@@ -88,7 +82,7 @@ func (self *response) chunkUpload(cid int, path, chunk string, file io.Reader) e
 	return nil
 }
 
-func (self *response) chunkMerge(target, chunk string) error {
+func (self *response) chunkMerge(id, path, chunk string) error {
 	var err error
 	re := regexp.MustCompile(`(\.[0-9][0-9]*?)(_.*?)(\.[0-9][0-9]*?_part)`)
 	ch := re.FindStringSubmatch(chunk)
@@ -106,8 +100,8 @@ func (self *response) chunkMerge(target, chunk string) error {
 		return err
 	}
 
-	targetPath := filepath.Join(self.config.rootDir, target, name)
-	os.Rename(filepath.Join(self.config.rootDir, target, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, 0, total)), targetPath)
+	targetPath := filepath.Join(conf[id].Root, path, name)
+	os.Rename(filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, 0, total)), targetPath)
 	f, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		self.Warning = append(self.Warning, err.Error())
@@ -115,7 +109,7 @@ func (self *response) chunkMerge(target, chunk string) error {
 	}
 	defer f.Close()
 	for i := 1; i <= total; i++ {
-		chunkPath := filepath.Join(self.config.rootDir, target, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total))
+		chunkPath := filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total))
 		c, err := os.OpenFile(chunkPath, os.O_RDONLY, 0666)
 		if err != nil {
 			return err
@@ -139,11 +133,7 @@ func (self *response) chunkMerge(target, chunk string) error {
 			return err
 		}
 	}
-	fStat, err := f.Stat()
-	if err != nil {
-		return err
-	}
-	fInfo, err := self._getFileDirInfo(targetPath, fStat)
+	fInfo, err := _infoFileDir(id, path)
 	if err != nil {
 		return err
 	}

@@ -4,62 +4,100 @@ import (
 	"path/filepath"
 	"os"
 	"mime"
-	"fmt"
 	"strings"
 	"io/ioutil"
+	"errors"
 )
 
 
 // Request functions
-func (self *response) open(init, tree bool, target string) error {
-	var (
-		err error
-	)
+func (self *response) open(id, path string, init, tree bool) error {
+	var err error
 
 	if init {
-		target = "/"
-		root, err := self._infoPath(self.config.rootDir + "/")
-		if err != nil {
-			return err
-		}
 		self.Api = APIver
-		self.Cwd = root
-		self.Options.Path = "files/1"
-		self.Options.Separator = "/"
-		self.Options.Url = "http://ly.dmbasis.ru:8080/files/1/"
-		self.Options.TmbUrl = "http://ly.dmbasis.ru:8080/files/1/.tmb/"
-
 	}
-		obj, err := self._infoPath(filepath.Join(self.config.rootDir, target))
-		if err != nil {
-			return err
-		}
-		self.Cwd = obj
 
-
-	err = filepath.Walk(filepath.Join(self.config.rootDir, target), self._info)
+	//obj, err := self._infoPath(filepath.Join(self.current.rootDir, target))
+	obj, err := _infoFileDir(id, path)
 	if err != nil {
 		return err
 	}
+	self.Cwd = obj
+	self.Files = []fileDir{}
+	if tree {
+		for k := range conf {
+				p, err := _infoFileDir(k, "")
+				if err == nil {
+					p.Options.Url = conf[k].Url
+					self.Files = append(self.Files, p)
+				}
+		}
+	}
 
+	fd := _listAll(id, path)
+	for _, f := range fd {
+		i, err := _infoFileDir(id, f)
+		if err == nil {
+			self.Files = append(self.Files, i)
+		}
+	}
 	return nil
 }
 
-func (self *response) file(target string) (fileName, mimeType string, data []byte, err error) {
-	target = filepath.Join(self.config.rootDir, target)
-	data, err = ioutil.ReadFile(target)
-	fileName = filepath.Base(target)
-	mimeType = mime.TypeByExtension(filepath.Ext(fileName))
+func (self *response) tree(id, path string) error {
+	fd := _listDirs(id, path)
+	self.Tree = []fileDir{}
+	for _, f := range fd {
+		if i, err := _infoFileDir(id, f); err == nil {
+			self.Tree = append(self.Tree, i)
+		}
+	}
+	return nil
+}
+
+func (self *response) parents(id, path string) error {
+	self.Tree = []fileDir{}
+
+	for path != string(filepath.Separator) {
+		path = filepath.Join(path, "..")
+		fd := _listDirs(id, path)
+		for _, f := range fd {
+			if i, err := _infoFileDir(id, f); err == nil {
+				self.Tree = append(self.Tree, i)
+			}
+		}
+	}
+	for k := range conf {
+		p, err := _infoFileDir(k, "")
+		if err == nil {
+			p.Options.Url = conf[k].Url
+			self.Tree = append(self.Tree, p)
+		}
+	}
+	return nil
+}
+
+func (self *response) file(id, path string) (fileName, mimeType string, data []byte, err error) {
+	if _getRight(id, path) {
+		path = filepath.Join(conf[id].Root, path)
+		data, err = ioutil.ReadFile(path)
+		fileName = filepath.Base(path)
+		mimeType = mime.TypeByExtension(filepath.Ext(fileName))
+	} else {
+		err = errors.New("Permission denied")
+	}
+
 	return fileName, mimeType, data, err
 }
 
-func (self *response) mkdir(path, name string) error {
-	create := filepath.Join(self.config.rootDir, path, name)
-	err := os.MkdirAll(create, 0777)
+func (self *response) mkdir(id, path, name string) error {
+	create := filepath.Join(path, name)
+	err := os.MkdirAll(filepath.Join(conf[id].Root, create), 0755)
 	if err != nil {
 		return err
 	}
-	added, err := self._infoPath(create)
+	added, err := _infoFileDir(id, create)
 	if err != nil {
 		return err
 	}
@@ -67,8 +105,8 @@ func (self *response) mkdir(path, name string) error {
 	if self.Hashes == nil {
 		self.Hashes = map[string]string{}
 	}
-	self.Hashes[name] = createHash(self.config.id, filepath.Join(path, name))
-	changed, err := self._infoPath(filepath.Join(self.config.rootDir, path))
+	self.Hashes[name] = createHash(id, filepath.Join(path, name))
+	changed, err := _infoFileDir(id, path)
 	if err != nil {
 		return err
 	}
@@ -76,40 +114,38 @@ func (self *response) mkdir(path, name string) error {
 	return nil
 }
 
-func (self *response) rm(path string) error {
-	err := os.RemoveAll(filepath.Join(self.config.rootDir, path))
+func (self *response) rm(id, path string) error {
+	err := os.RemoveAll(filepath.Join(conf[id].Root, path))
 	if err != nil {
 		return err
 	}
-	self.Removed = append(self.Removed, createHash(self.config.id, path))
+	self.Removed = append(self.Removed, createHash(id, path))
 	return nil
 }
 
-func (self *response) rename(path, name string) error {
-	newPath := filepath.Join(self.config.rootDir, filepath.Dir(path), filepath.Base(name))
-	err := os.Rename(filepath.Join(self.config.rootDir, path), newPath)
+func (self *response) rename(id, path, name string) error {
+	newPath := filepath.Join(filepath.Dir(path), filepath.Base(name))
+	err := os.Rename(filepath.Join(conf[id].Root, path), filepath.Join(conf[id].Root,newPath))
 	if err != nil {
 		return err
 	}
-	fmt.Println("Rename:", filepath.Join(self.config.rootDir, path), "to", newPath)
-	added, err := self._infoPath(newPath)
+	added, err := _infoFileDir(id, newPath)
 	self.Added = append(self.Added, added)
-	self.Removed = append(self.Removed, createHash(self.config.id, path))
+	self.Removed = append(self.Removed, createHash(id, path))
 	return nil
 }
 
-func (self *response) renames(target, suffix string, renames []string) error {
-	fmt.Println("Target:", target, "Suffix:", suffix, "Renames:", renames)
+func (self *response) renames(id, path, suffix string, renames []string) error {
 	if len(renames) != 0 {
 		for _, r := range renames  {
-			oldPath := filepath.Join(self.config.rootDir, target, r)
-			newPath := filepath.Join(self.config.rootDir, target, strings.TrimRight(r, filepath.Ext(r)) + suffix + filepath.Ext(r))
-			fmt.Println("Renames:", oldPath, "to", newPath)
-			err := os.Rename(oldPath, newPath) //ToDo suffix clean
+			oldPath := filepath.Join(path, r)
+			newPath := filepath.Join(path, strings.TrimRight(r, filepath.Ext(r)) + suffix + filepath.Ext(r))
+
+			err := os.Rename(filepath.Join(conf[id].Root, oldPath), filepath.Join(conf[id].Root, newPath)) //ToDo suffix clean
 			if err != nil {
 				return err
 			}
-			added, err := self._infoPath(newPath)
+			added, err := _infoFileDir(id, newPath)
 			self.Added = append(self.Added, added)
 		}
 	}
@@ -119,11 +155,10 @@ func (self *response) renames(target, suffix string, renames []string) error {
 
 
 
-func (self *response) ls(target string, intersect []string) {
+func (self *response) ls(id, target string, intersect []string) {
 	self.List = []string{}
 	for _, i := range intersect {
-		_, err := os.Stat(filepath.Join(self.config.rootDir, target, i));
-		fmt.Println("File:", filepath.Join(self.config.rootDir, target, i), "is", !os.IsNotExist(err))
+		_, err := os.Stat(filepath.Join(conf[id].Root, target, i));
 		if !os.IsNotExist(err) {
 			self.List = append(self.List, i)
 		}

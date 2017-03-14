@@ -28,7 +28,10 @@ Example code:
 	}
 	mux.Handle("/connector", elFinder.NetHttp(config))
  */
-func NetHttp(config Config) http.Handler {
+
+var conf Volumes
+
+func NetHttp(config Volumes) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var (
 			volume response
@@ -38,8 +41,8 @@ func NetHttp(config Config) http.Handler {
 			mode, bg string
 			width, height, x, y, degree, quality int
 			dirs []string
-			target string
-			targets []string
+			id, path string
+			paths map[string]string
 			renames []string
 			suffix string
 			intersect []string
@@ -48,6 +51,7 @@ func NetHttp(config Config) http.Handler {
 			cid int
 			err error
 		)
+		conf = config
 
 		if r.Method == "GET" {
 			if err := r.ParseForm(); err != nil {
@@ -99,32 +103,33 @@ func NetHttp(config Config) http.Handler {
 				quality, _  = strconv.Atoi(r.Form["quality"][0])
 			}*/
 			if r.Form["target"] != nil {
-				volume, target, err = parsePathHash(config, r.Form["target"][0])
+				id, path, err = parsePathHash(config, r.Form["target"][0])
 				if err != nil {
 					log.Println(err)
 				}
-				if !volume.checkRight(target) {
+				if !_getRight(id, path) {
 					w.Header().Set("Content-Type", "application/json")
 					w.Write([]byte(`{"error" : "errLocked"}`))
 					return
 				}
 
 			} else if r.Form["targets[]"] != nil {
+				paths = map[string]string{}
 				for _, ft := range r.Form["targets[]"] {
-					var p string
-					volume, p, err = parsePathHash(config, ft)
+					var i, p string
+					i, p, err = parsePathHash(config, ft)
 					if err != nil {
 						log.Println(err)
 					}
-					if !volume.checkRight(p) {
+					if !_getRight(i, p) {
 						w.Header().Set("Content-Type", "application/json")
 						w.Write([]byte(`{"error" : "errLocked"}`))
 						return
 					}
-					targets = append(targets, p)
+					paths[i] = p
 				}
 			} else {
-				target = "/"
+				path = "/"
 				return
 			}
 
@@ -138,30 +143,30 @@ func NetHttp(config Config) http.Handler {
 			r.ParseMultipartForm(32 << 20) // ToDo check 8Mb
 			fmt.Println("POST", r.PostForm)
 			if r.PostForm["target"] != nil {
-				volume, target, err = parsePathHash(config, r.PostForm["target"][0])
+				id, path, err = parsePathHash(config, r.PostForm["target"][0])
 				if err != nil {
 					log.Println(err)
 				}
-				if !volume.checkRight(target) {
+				if !_getRight(id, path) {
 					w.Header().Set("Content-Type", "application/json")
 					w.Write([]byte(`{"error" : "errLocked"}`))
 					return
 				}
 
 			} else if r.PostForm["targets[]"] != nil {
+				paths = map[string]string{}
 				for _, ft := range r.PostForm["targets[]"] {
-					var p string
-					volume, p, err = parsePathHash(config, ft)
+					var i, p string
+					i, p, err = parsePathHash(config, ft)
 					if err != nil {
 						log.Println(err)
 					}
-					//ToDo error multi path
-					if !volume.checkRight(p) {
+					if !_getRight(i, p) {
 						w.Header().Set("Content-Type", "application/json")
 						w.Write([]byte(`{"error" : "errLocked"}`))
 						return
 					}
-					targets = append(targets, p)
+					paths[i] = p
 				}
 			}
 			if r.PostForm["cid"] != nil {
@@ -171,14 +176,13 @@ func NetHttp(config Config) http.Handler {
 				}
 			}
 			if r.PostForm["upload_path[]"] != nil {
-				for i := range r.PostForm["upload_path[]"] {
-					var p string
-					volume, p, err = parsePathHash(config, r.PostForm["upload_path[]"][i])
+				for u := range r.PostForm["upload_path[]"] {
+					var i, p string
+					i, p, err = parsePathHash(config, r.PostForm["upload_path[]"][u])
 					if err != nil {
 						log.Println(err)
 					}
-					//ToDo error multi path
-					if !volume.checkRight(p) {
+					if !_getRight(i, p) {
 						w.Header().Set("Content-Type", "application/json")
 						w.Write([]byte(`{"error" : "errLocked"}`))
 						return
@@ -203,13 +207,13 @@ func NetHttp(config Config) http.Handler {
 
 		switch cmd {
 		case "open":
-			err := volume.open(init, tree, target)
+			err := volume.open(id, path, init, tree)
 			if err != nil {
-				log.Println(err)
+				log.Println("Volume open:", err)
 			}
 
 		case "file":
-			fileName, mimeType, data, err := volume.file(target)
+			fileName, mimeType, data, err := volume.file(id, path)
 			if err != nil {
 				volume.Error = err.Error()
 			} else {
@@ -224,27 +228,34 @@ func NetHttp(config Config) http.Handler {
 			}
 
 		case "tree":
+			err := volume.tree(id, path)
+			if err != nil {
+				volume.Error = err.Error()
+			}
 		case "parents":
+			err := volume.parents(id, path)
+			if err != nil {
+				volume.Error = err.Error()
+			}
 		case "ls":
-			volume.ls(target, intersect)
+			volume.ls(id, path, intersect)
 		case "tmb":
-			err := volume.tmb(targets)
+			err := volume.tmb(id, paths)
 			if err != nil {
 				volume.Error = err.Error()
 			}
 		case "size":
-
+			//ToDo
 		case "dim":
-			err := volume.dim(target)
+			err := volume.dim(id, path)
 			if err != nil {
 				volume.Error = err.Error()
 			}
-
 		case "mkdir":
 			if len(dirs) > 0 {
 				err := []string{}
 				for _, f := range dirs {
-					e := volume.mkdir(target, f)
+					e := volume.mkdir(id, path, f)
 					if e != nil {
 						err = append(err, e.Error())
 					}
@@ -253,17 +264,18 @@ func NetHttp(config Config) http.Handler {
 					volume.Error = err
 				}
 			} else {
-				err = volume.mkdir(target, name)
+				err = volume.mkdir(id, path, name)
 				if err != nil {
 					volume.Error = err.Error()
 				}
 			}
 
 		case "mkfile":
+			//ToDo
 		case "rm":
 			err := []string{}
-			for _, f := range targets {
-				e := volume.rm(f)
+			for i, f := range paths {
+				e := volume.rm(i, f)
 				if e != nil {
 					err = append(err, e.Error())
 				}
@@ -273,13 +285,15 @@ func NetHttp(config Config) http.Handler {
 			}
 
 		case "rename":
-			err := volume.rename(target, name)
+			err := volume.rename(id, path, name)
 			if err != nil {
 				volume.Error = err.Error()
 			}
 
 		case "duplicate":
+			//ToDo
 		case "paste":
+			//ToDo
 		case "upload":
 			if r.PostForm["chunk"] != nil {
 				var (
@@ -289,26 +303,26 @@ func NetHttp(config Config) http.Handler {
 				)
 				if r.PostForm["cid"] == nil {
 					if len(renames) != 0 {
-						fmt.Println("Result renames",volume.renames(target, suffix, renames))
+						fmt.Println("Result renames",volume.renames(id,path, suffix, renames))
 					}
-					fmt.Println("Result chunk merge", volume.chunkMerge(uploadPath[0], chunk))
+					fmt.Println("Result chunk merge", volume.chunkMerge(id, uploadPath[0], chunk))
 				}
 				for i := range r.MultipartForm.File["upload[]"] {
 					file, err = r.MultipartForm.File["upload[]"][i].Open()
 					if err != nil {
 						fmt.Println(err)
 					}
-					fmt.Println("Result chunk upload", volume.chunkUpload(cid, uploadPath[i], chunk, file))
+					fmt.Println("Result chunk upload", volume.chunkUpload(cid, id, uploadPath[i], chunk, file))
 				}
 
 			} else {
 				if len(renames) != 0 {
-					fmt.Println("Result renames",volume.renames(target, suffix, renames))
+					fmt.Println("Result renames",volume.renames(id, path, suffix, renames))
 				}
 				esl := []string{}
 				for i, f := range r.MultipartForm.File["upload[]"] {
 					file, _ := f.Open()
-					e := volume.upload(uploadPath[i], f.Filename, file)
+					e := volume.upload(id, uploadPath[i], f.Filename, file)
 					if e != nil {
 						esl = append(esl, e.Error())
 					}
@@ -321,19 +335,25 @@ func NetHttp(config Config) http.Handler {
 
 
 		case "get":
+			//ToDo
 		case "put":
+			//ToDo
 		case "archive":
+			//ToDo
 		case "extract":
+			//ToDo
 		case "search":
+			//ToDo
 		case "info":
+			//ToDo
 		case "resize":
 			switch mode {
 			case "resize":
-				err = volume.resize(target, width, height)
+				err = volume.resize(id, path, width, height)
 			case "crop":
-				err = volume.crop(target, x, y, width, height)
+				err = volume.crop(id, path, x, y, width, height)
 			case "rotate":
-				err = volume.rotate(target, bg, degree)
+				err = volume.rotate(id, path, bg, degree)
 			}
 			_ = quality
 			if err != nil {
@@ -342,8 +362,11 @@ func NetHttp(config Config) http.Handler {
 		case "url":
 		//	case "netmount":
 		case "zipdl":
+			//ToDo
 		case "callback":
+			//ToDo
 		case "chmod":
+			//ToDo
 
 
 		default:
