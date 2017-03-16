@@ -11,41 +11,41 @@ import (
 	"errors"
 )
 
-func (self *response) upload(id, path, name string, file io.Reader) error {
+func (self *elf) upload(id, path, name string, file io.Reader) error {
 	f, err := os.OpenFile(filepath.Join(conf[id].Root, path, name), os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
-		self.Warning = append(self.Warning, err.Error())
+		self.res.Warning = append(self.res.Warning, err.Error())
 		return err
 	}
 	defer f.Close()
 	_, err = io.Copy(f, file)
 	if err != nil {
-		self.Warning = append(self.Warning, err.Error())
+		self.res.Warning = append(self.res.Warning, err.Error())
 		return err
 	}
-	i, err := _infoFileDir(id, path)
+	i, err := _infoFileDir(target{id: id, path: path})
 	if err != nil {
-		self.Warning = append(self.Warning, err.Error())
+		self.res.Warning = append(self.res.Warning, err.Error())
 	}
-	self.Added = append(self.Added, i)
+	self.res.Added = append(self.res.Added, i)
 	return nil
 }
 
-func (self *response) chunkUpload(cid int, id, path, chunk string, file io.Reader) error {
+func (self *elf) chunkUpload(id, path, chunk string, file io.Reader) error {
 	if file != nil {
-		tmpPath := filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s~", cid, chunk))
+		tmpPath := filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s~", self.req.Cid, chunk))
 		f, err := os.OpenFile(tmpPath, os.O_WRONLY | os.O_CREATE, 0666)
 		if err != nil {
-			self.Warning = append(self.Warning, err.Error())
+			self.res.Warning = append(self.res.Warning, err.Error())
 			return err
 		}
 		_, err = io.Copy(f, file)
 		if err != nil {
-			self.Warning = append(self.Warning, err.Error())
+			self.res.Warning = append(self.res.Warning, err.Error())
 			return err
 		}
 		f.Close()
-		os.Rename(tmpPath, filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s", cid, chunk)))
+		os.Rename(tmpPath, filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s", self.req.Cid, chunk)))
 	}
 
 	// check complete ---------------------------------------------------
@@ -62,7 +62,7 @@ func (self *response) chunkUpload(cid int, id, path, chunk string, file io.Reade
 	}
 	allComplete := func() bool {
 		for i := 0; i <= total; i++ {
-			if _, err := os.Stat(filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total))); os.IsNotExist(err) {
+			if _, err := os.Stat(filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s.%d_%d.part", self.req.Cid, name, i, total))); os.IsNotExist(err) {
 				return false
 			}
 		}
@@ -72,17 +72,17 @@ func (self *response) chunkUpload(cid int, id, path, chunk string, file io.Reade
 	// -----------------------------------------------------------------
 
 	if complete {
-		self.Chunkmerged = fmt.Sprintf(".%d_%s.%d_part", cid, name, total)
-		self.Name = name
+		self.res.Chunkmerged = fmt.Sprintf(".%d_%s.%d_part", self.req.Cid, name, total)
+		self.res.Name = name
 	}
 	fmt.Println("Check chunk result:", complete)
-	if self.Added == nil {
-		self.Added = []fileDir{}
+	if self.res.Added == nil {
+		self.res.Added = []fileDir{}
 	}
 	return nil
 }
 
-func (self *response) chunkMerge(id, path, chunk string) error {
+func (self *elf) chunkMerge(id, path, chunk string) error {
 	var err error
 	re := regexp.MustCompile(`(\.[0-9][0-9]*?)(_.*?)(\.[0-9][0-9]*?_part)`)
 	ch := re.FindStringSubmatch(chunk)
@@ -104,7 +104,7 @@ func (self *response) chunkMerge(id, path, chunk string) error {
 	os.Rename(filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, 0, total)), targetPath)
 	f, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
-		self.Warning = append(self.Warning, err.Error())
+		self.res.Warning = append(self.res.Warning, err.Error())
 		return err
 	}
 	defer f.Close()
@@ -133,11 +133,11 @@ func (self *response) chunkMerge(id, path, chunk string) error {
 			return err
 		}
 	}
-	fInfo, err := _infoFileDir(id, path)
+	fInfo, err := _infoFileDir(target{id: id, path: path})
 	if err != nil {
 		return err
 	}
-	self.Added = append(self.Added, fInfo)
+	self.res.Added = append(self.res.Added, fInfo)
 
 	return nil
 }

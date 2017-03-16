@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"os"
 	"fmt"
-	"github.com/Unknwon/com"
+//	"github.com/Unknwon/com"
 	"image"
 	"github.com/disintegration/imaging"
 	"github.com/disintegration/gift"
@@ -40,9 +40,81 @@ func createHash(volumeId, path string) string {
 }
 
 
-// File functions
+/*/ File functions
 func copyFile(src, dest string) error {
 	return com.Copy(src, dest) //ToDo use it?
+}
+*/
+
+func copyFile(source string, dest string) (err error) {
+	sourcefile, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+
+	defer sourcefile.Close()
+
+	destfile, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+
+	defer destfile.Close()
+
+	_, err = io.Copy(destfile, sourcefile)
+	if err == nil {
+		sourceinfo, err := os.Stat(source)
+		if err != nil {
+			err = os.Chmod(dest, sourceinfo.Mode())
+		}
+
+	}
+
+	return
+}
+
+func copyDir(source string, dest string) (err error) {
+
+	// get properties of source dir
+	sourceinfo, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+
+	// create dest dir
+
+	err = os.MkdirAll(dest, sourceinfo.Mode())
+	if err != nil {
+		return err
+	}
+
+	directory, _ := os.Open(source)
+
+	objects, err := directory.Readdir(-1)
+
+	for _, obj := range objects {
+
+		sourcefilepointer := source + "/" + obj.Name()
+
+		destinationfilepointer := dest + "/" + obj.Name()
+
+
+		if obj.IsDir() {
+			// create sub-directories - recursively
+			err = copyDir(sourcefilepointer, destinationfilepointer)
+			if err != nil {
+				fmt.Println(err)
+			}
+		} else {
+			// perform copy
+			err = copyFile(sourcefilepointer, destinationfilepointer)
+			if err != nil {
+				fmt.Println(err)
+			}
+		}
+
+	}
+	return
 }
 
 
@@ -128,6 +200,7 @@ func hexColor(s string) (r, g, b, a uint8) {
 	b = uint8((decimal >> 8) & 0xFF)
 	g = uint8((decimal >> 16) & 0xFF)
 	r = uint8((decimal >> 24) & 0xFF)
+
 	return
 }
 

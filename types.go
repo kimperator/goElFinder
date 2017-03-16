@@ -1,36 +1,83 @@
 package goElFinder
 
+type elf struct {
+	req        request
+	res        response
+	target     target
+	targets    []target
+	dirs       []target
+	uploadpath []target
+	dst        target
+	src        target
+}
+
+type target struct {
+	id string
+	path string
+}
+
+type request struct {
+	Cmd string `form:"cmd"`
+	Init bool `form:"init"`
+	Tree bool `form:"tree"`
+	Name string `form:"name"`
+	Target string `form:"target"`
+	Targets []string `form:"targets"`
+	Dirs []string `form:"dirs"`
+	Mode string `form:"mode"`
+	Bg string `form:"bg"`
+	Width int `form:"width"`
+	Height int `form:"height"`
+	X int  `form:"x"`
+	Y int `form:"y"`
+	Degree int `form:"degree"`
+	Quality int `form:"quality"`
+	Renames []string `form:"renames"`
+	Suffix string  `form:"suffix"`
+	Intersect []string  `form:"intersect"`
+	Chunk string `form:"chunk"`
+	UploadPath []string `form:"upload_path"`
+	Cid int `form:"cid"`
+	Content string `form:"content"`
+	Dst string `form:"dst"`
+	Src string `form:"src"`
+	Cut bool `form:"cut"`
+}
 
 type response struct {
 	//current config
 	//volumes Volumes
 
-	Api     string `json:"api,omitempty"`               // The version number of the protocol, must be >= 2.1, ATTENTION - return api ONLY for init request!
-	Cwd     fileDir `json:"cwd,omitempty"`              // Current Working Directory - information about the current directory. Information about File/Directory
-	Files   []fileDir `json:"files"`          // array of objects - files and directories in current directory. If parameter tree == true, then added to the folder of the directory tree to a given depth. The order of files is not important. Note you must include the top-level volume objects here as well (i.e. cwd is repeated here, in addition to other volumes)
-	NetDrivers  []string `json:"netDrivers,omitempty"`      // Network protocols list which can be mounted on the fly (using netmount command). Now only ftp supported.
-	Options     options `json:"options,omitempty"`
-	UplMaxFile  string `json:"uplMaxFile,omitempty"`        // Allowed upload max number of file per request. For example 20
-	UplMaxSize  string `json:"uplMaxSize,omitempty"`        // Allowed upload max size per request. For example "32M"
+	Api string `json:"api,omitempty"`               // The version number of the protocol, must be >= 2.1, ATTENTION - return api ONLY for init request!
+	Cwd fileDir `json:"cwd,omitempty"`              // Current Working Directory - information about the current directory. Information about File/Directory
+	Files []fileDir `json:"files"`          // array of objects - files and directories in current directory. If parameter tree == true, then added to the folder of the directory tree to a given depth. The order of files is not important. Note you must include the top-level volume objects here as well (i.e. cwd is repeated here, in addition to other volumes)
+	NetDrivers []string `json:"netDrivers,omitempty"`      // Network protocols list which can be mounted on the fly (using netmount command). Now only ftp supported.
+	Options options `json:"options,omitempty"`
+	UplMaxFile string `json:"uplMaxFile,omitempty"`        // Allowed upload max number of file per request. For example 20
+	UplMaxSize string `json:"uplMaxSize,omitempty"`        // Allowed upload max size per request. For example "32M"
 
-	Tree     []fileDir `json:"tree"`        // for tree
+	Tree []fileDir `json:"tree"`        // for tree
 
-	Dim         string `json:"dim,omitempty"`               // for images
+	Dim string `json:"dim,omitempty"`               // for images
 
-	Added       []fileDir `json:"added,omitempty"`                    // for upload, mkdir, rename
-	Warning     []string `json:"warning,omitempty"`         // for upload
-	Changed     []fileDir `json:"changed,omitempty"`        // for mkdir
-	Hashes      map[string]string `json:"hashes,omitempty"` // for mkdir
-	List 	    []string `json:"list,omitempty"` 		// for ls
+	Added []fileDir `json:"added,omitempty"`                    // for upload, mkdir, rename
+	Warning []string `json:"warning,omitempty"`         // for upload
+	Changed []fileDir `json:"changed,omitempty"`        // for mkdir
+	Hashes map[string]string `json:"hashes,omitempty"` // for mkdir
+	List []string `json:"list,omitempty"` 		// for ls
 
-	Name        string `json:"_name,omitempty"`
+	Name string `json:"_name,omitempty"`
 	Chunkmerged string `json:"_chunkmerged,omitempty"`
 
-	Removed     []string `json:"removed,omitempty"`         // for remove, rename
+	Removed []string `json:"removed,omitempty"`         // for remove, rename
 
-	Images     map[string]string `json:"images,omitempty"`  // for tmb
+	Images map[string]string `json:"images,omitempty"`  // for tmb
 
-	Error       interface{} `json:"error,omitempty"`
+	Content string `json:"content,omitempty"` // for get
+
+	Url string `json:"url,omitempty"` // for url
+
+	Error interface{} `json:"error,omitempty"`
 }
 
 type options struct {

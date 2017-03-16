@@ -5,70 +5,70 @@ import (
 	"os"
 )
 
-func (self *response) tmb(id string, path map[string]string) error {
-	self.Images= map[string]string{}
-	for i, t := range path {
-		tmb := encode64(t)
-		stmb := tmb + filepath.Ext(t)
-		os.MkdirAll(filepath.Join(conf[i].Root, filepath.Dir(t), ".tmb"), 0755)
-		err := resizeImage(filepath.Join(conf[i].Root, t), filepath.Join(conf[i].Root, filepath.Dir(t), ".tmb", stmb), 48, 0)
+func (self *elf) tmb() error {
+	self.res.Images= map[string]string{}
+	for _, p := range self.targets {
+		tmb := encode64(p.path)
+		stmb := tmb + filepath.Ext(p.path)
+		os.MkdirAll(filepath.Join(conf[p.id].Root, filepath.Dir(p.path), ".tmb"), 0755)
+		err := resizeImage(filepath.Join(conf[p.id].Root, p.path), filepath.Join(conf[p.id].Root, filepath.Dir(p.path), ".tmb", stmb), 48, 0)
 		if err != nil {
 			return err
 		}
-		self.Images[tmb] = stmb
+		self.res.Images[tmb] = stmb
 	}
 	return nil
 }
 
-func (self *response) dim(id, path string) error {
+func (self *elf) dim() error {
 	var err error
-	target := filepath.Join(conf[id].Root, path)
-	self.Dim, err = getImageDim(target)
+	target := filepath.Join(conf[self.target.id].Root, self.target.path)
+	self.res.Dim, err = getImageDim(target)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (self *response) resize(id, path string, width, height int) error {
+func (self *elf) resize(id, path string) error {
 	img := filepath.Join(conf[id].Root, path)
-	err := resizeImage(img, img, width, height)
+	err := resizeImage(img, img, self.req.Width, self.req.Height)
 	if err != nil {
 		return err
 	}
-	changed, err := _infoFileDir(id,path)
+	changed, err := _infoFileDir(target{id: id, path: path})
 	if err != nil {
 		return err
 	}
-	self.Changed = append(self.Changed, changed)
+	self.res.Changed = append(self.res.Changed, changed)
 	return nil
 }
 
 
-func (self *response) crop(id, path string, x, y, width, height int) error {
+func (self *elf) crop(id, path string) error {
 	img := filepath.Join(conf[id].Root, path)
-	err := cropImage(img, img, x, y, width, height)
+	err := cropImage(img, img, self.req.X, self.req.Y, self.req.Width, self.req.Height)
 	if err != nil {
 		return err
 	}
-	changed, err := _infoFileDir(id, path)
+	changed, err := _infoFileDir(target{id: id, path: path})
 	if err != nil {
 		return err
 	}
-	self.Changed = append(self.Changed, changed)
+	self.res.Changed = append(self.res.Changed, changed)
 	return nil
 }
 
-func (self *response) rotate(id, path, bg string, degree int) error {
+func (self *elf) rotate(id, path string) error {
 	img := filepath.Join(conf[id].Root, path)
-	err := rotateImage(img, img, bg, degree)
+	err := rotateImage(img, img, self.req.Bg, self.req.Degree)
 	if err != nil {
 		return err
 	}
-	changed, err := _infoFileDir(id, path)
+	changed, err := _infoFileDir(target{id: id, path: path})
 	if err != nil {
 		return err
 	}
-	self.Changed = append(self.Changed, changed)
+	self.res.Changed = append(self.res.Changed, changed)
 	return nil
 }

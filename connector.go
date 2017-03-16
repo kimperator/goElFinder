@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strconv"
 	"io"
+	"github.com/go-playground/form"
 )
 
 const APIver = "2.1"
@@ -27,195 +27,71 @@ Example code:
 		DefaultRight: true,
 	}
 	mux.Handle("/connector", elFinder.NetHttp(config))
- */
+*/
 
 var conf Volumes
+var decoder *form.Decoder
 
 func NetHttp(config Volumes) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var (
-			volume response
-			init, tree bool
-			cmd string
-			name string
-			mode, bg string
-			width, height, x, y, degree, quality int
-			dirs []string
-			id, path string
-			paths map[string]string
-			renames []string
-			suffix string
-			intersect []string
-			chunk string
-			uploadPath []string
-			cid int
 			err error
 		)
 		conf = config
+
+// ToDo use it--------------------
+		var self elf
+		decoder = form.NewDecoder()
+
+//--------------------
 
 		if r.Method == "GET" {
 			if err := r.ParseForm(); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			fmt.Println("GET:", r.Form)
-			if r.Form["init"] != nil && r.Form["init"][0] == "1" {
-				init = true
-			} else {
-				init = false
-			}
-			if r.Form["tree"] != nil && r.Form["tree"][0] == "1" {
-				tree = true
-			} else {
-				tree = false
-			}
-			if r.Form["name"] != nil {
-				name = r.Form["name"][0]
-			}
-			if r.Form["dirs[]"] != nil {
-				dirs = r.Form["dirs[]"] // ToDo check rights
-			}
-			if r.Form["intersect[]"] != nil {
-				intersect = r.Form["intersect[]"] // ToDo check rights
-			}
-			if r.Form["mode"] != nil {
-				mode = r.Form["mode"][0]
-			}
-			if r.Form["width"] != nil {
-				width, _  = strconv.Atoi(r.Form["width"][0])
-			}
-			if r.Form["height"] != nil {
-				height, _  = strconv.Atoi(r.Form["height"][0])
-			}
-			if r.Form["x"] != nil {
-				x, _  = strconv.Atoi(r.Form["x"][0])
-			}
-			if r.Form["y"] != nil {
-				y, _  = strconv.Atoi(r.Form["y"][0])
-			}
-			if r.Form["degree"] != nil {
-				degree, _  = strconv.Atoi(r.Form["degree"][0])
-			}
-			if r.Form["bg"] != nil {
-				bg = r.Form["bg"][0]
-			}
-			/*if r.Form["quality"] != nil {
-				quality, _  = strconv.Atoi(r.Form["quality"][0])
-			}*/
-			if r.Form["target"] != nil {
-				id, path, err = parsePathHash(config, r.Form["target"][0])
-				if err != nil {
-					log.Println(err)
-				}
-				if !_getRight(id, path) {
-					w.Header().Set("Content-Type", "application/json")
-					w.Write([]byte(`{"error" : "errLocked"}`))
-					return
-				}
+fmt.Println("GET:", r.Form)
 
-			} else if r.Form["targets[]"] != nil {
-				paths = map[string]string{}
-				for _, ft := range r.Form["targets[]"] {
-					var i, p string
-					i, p, err = parsePathHash(config, ft)
-					if err != nil {
-						log.Println(err)
-					}
-					if !_getRight(i, p) {
-						w.Header().Set("Content-Type", "application/json")
-						w.Write([]byte(`{"error" : "errLocked"}`))
-						return
-					}
-					paths[i] = p
-				}
-			} else {
-				path = "/"
-				return
+			err = decoder.Decode(&self.req, r.Form)
+			if err != nil {
+				log.Println(err)
 			}
 
-			if r.Form["cmd"] == nil {
-				w.Header().Set("Content-Type", "application/json")
-				w.Write([]byte(`{"error" : "errUnknownCmd"}`))
-				return
-			}
-			cmd = r.Form["cmd"][0]
+
 		} else if r.Method == "POST" {
 			r.ParseMultipartForm(32 << 20) // ToDo check 8Mb
-			fmt.Println("POST", r.PostForm)
-			if r.PostForm["target"] != nil {
-				id, path, err = parsePathHash(config, r.PostForm["target"][0])
-				if err != nil {
-					log.Println(err)
-				}
-				if !_getRight(id, path) {
-					w.Header().Set("Content-Type", "application/json")
-					w.Write([]byte(`{"error" : "errLocked"}`))
-					return
-				}
+fmt.Println("POST", r.PostForm)
 
-			} else if r.PostForm["targets[]"] != nil {
-				paths = map[string]string{}
-				for _, ft := range r.PostForm["targets[]"] {
-					var i, p string
-					i, p, err = parsePathHash(config, ft)
-					if err != nil {
-						log.Println(err)
-					}
-					if !_getRight(i, p) {
-						w.Header().Set("Content-Type", "application/json")
-						w.Write([]byte(`{"error" : "errLocked"}`))
-						return
-					}
-					paths[i] = p
-				}
+			err = decoder.Decode(&self.req, r.PostForm)
+			if err != nil {
+				log.Println(err)
 			}
-			if r.PostForm["cid"] != nil {
-				cid, err = strconv.Atoi(r.PostForm["cid"][0])
-				if err != nil {
-					log.Print(err)
-				}
-			}
-			if r.PostForm["upload_path[]"] != nil {
-				for u := range r.PostForm["upload_path[]"] {
-					var i, p string
-					i, p, err = parsePathHash(config, r.PostForm["upload_path[]"][u])
-					if err != nil {
-						log.Println(err)
-					}
-					if !_getRight(i, p) {
-						w.Header().Set("Content-Type", "application/json")
-						w.Write([]byte(`{"error" : "errLocked"}`))
-						return
-					}
-					uploadPath = append(uploadPath, p)
-				}
-			}
-			if r.PostForm["renames[]"] != nil {
-				renames = r.PostForm["renames[]"]
-			}
-			if r.PostForm["suffix"] != nil {
-				suffix = r.PostForm["suffix"][0]
-			}
-			if r.PostForm["chunk"] != nil {
-				chunk = r.PostForm["chunk"][0]
-			}
+fmt.Printf("%#v\n", self)
 
-			cmd = r.PostForm["cmd"][0]
 		}
 //-------------------------------------------------------------------------
 
+		err = self._parse()
+		self.target, err = parsePathHash(self.req.Target)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(fmt.Sprintf(`{"error" : "%s"}`, err)))
+			return
+		}
 
-		switch cmd {
+//-------------------------------------------------------------------------
+
+		switch self.req.Cmd {
 		case "open":
-			err := volume.open(id, path, init, tree)
+			err := self.open()
 			if err != nil {
 				log.Println("Volume open:", err)
 			}
 
 		case "file":
-			fileName, mimeType, data, err := volume.file(id, path)
+			fileName, mimeType, data, err := self.file()
 			if err != nil {
-				volume.Error = err.Error()
+				self.res.Error = err.Error()
 			} else {
 				w.Header().Set("Content-Type", mimeType)
 				if r.Form["download"] != nil {
@@ -228,116 +104,110 @@ func NetHttp(config Volumes) http.Handler {
 			}
 
 		case "tree":
-			err := volume.tree(id, path)
+			err := self.tree(self.target)
 			if err != nil {
-				volume.Error = err.Error()
+				self.res.Error = err.Error()
 			}
 		case "parents":
-			err := volume.parents(id, path)
+			err := self.parents(self.target)
 			if err != nil {
-				volume.Error = err.Error()
+				self.res.Error = err.Error()
 			}
 		case "ls":
-			volume.ls(id, path, intersect)
+			self.ls()
 		case "tmb":
-			err := volume.tmb(id, paths)
-			if err != nil {
-				volume.Error = err.Error()
-			}
+			self.tmb()
+
+
 		case "size":
-			//ToDo
+fmt.Println("Cmd size ", self.targets)
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(fmt.Sprintf(`{"size": %d}`, self.size())))
+			return
 		case "dim":
-			err := volume.dim(id, path)
+			err := self.dim()
 			if err != nil {
-				volume.Error = err.Error()
+				self.res.Error = err.Error()
 			}
 		case "mkdir":
-			if len(dirs) > 0 {
-				err := []string{}
-				for _, f := range dirs {
-					e := volume.mkdir(id, path, f)
-					if e != nil {
-						err = append(err, e.Error())
-					}
-				}
-				if len(err) > 0 {
-					volume.Error = err
-				}
+			if len(self.req.Dirs) > 0 { // ToDo this
+				self.mkdirs()
 			} else {
-				err = volume.mkdir(id, path, name)
+				err = self.mkdir()
 				if err != nil {
-					volume.Error = err.Error()
+					self.res.Error = err.Error()
 				}
 			}
 
 		case "mkfile":
-			//ToDo
-		case "rm":
-			err := []string{}
-			for i, f := range paths {
-				e := volume.rm(i, f)
-				if e != nil {
-					err = append(err, e.Error())
-				}
-			}
-			if len(err) > 0 {
-				volume.Error = err
-			}
-
-		case "rename":
-			err := volume.rename(id, path, name)
+			err = self.mkfile()
 			if err != nil {
-				volume.Error = err.Error()
+				self.res.Error = err.Error()
+			}
+		case "rm":
+			err = self.rm()
+			if err != nil {
+				self.res.Error = err.Error()
+			}
+		case "rename":
+			err := self.rename(self.target.id, self.target.path)
+			if err != nil {
+				self.res.Error = err.Error()
 			}
 
 		case "duplicate":
 			//ToDo
 		case "paste":
-			//ToDo
-		case "upload":
-			if r.PostForm["chunk"] != nil {
+			self.paste()
+		case "upload": // ToDo Fix it
+			if self.req.Chunk != "" {
 				var (
-
 					file io.Reader
 					err error
 				)
 				if r.PostForm["cid"] == nil {
-					if len(renames) != 0 {
-						fmt.Println("Result renames",volume.renames(id,path, suffix, renames))
+					if len(self.req.Renames) != 0 {
+						fmt.Println("Result renames", self.renames(self.target.id, self.target.path))
 					}
-					fmt.Println("Result chunk merge", volume.chunkMerge(id, uploadPath[0], chunk))
+fmt.Println("Result chunk merge", self.chunkMerge(self.target.id, self.uploadpath[0].path, self.req.Chunk))
 				}
 				for i := range r.MultipartForm.File["upload[]"] {
 					file, err = r.MultipartForm.File["upload[]"][i].Open()
 					if err != nil {
 						fmt.Println(err)
 					}
-					fmt.Println("Result chunk upload", volume.chunkUpload(cid, id, uploadPath[i], chunk, file))
+fmt.Println("Result chunk upload", self.chunkUpload(self.target.id, self.uploadpath[i].path, self.req.Chunk, file))
 				}
 
 			} else {
-				if len(renames) != 0 {
-					fmt.Println("Result renames",volume.renames(id, path, suffix, renames))
+				if len(self.req.Renames) != 0 {
+					fmt.Println("Result renames", self. renames(self.target.id, self.target.path))
 				}
-				esl := []string{}
+				ers := []string{}
 				for i, f := range r.MultipartForm.File["upload[]"] {
 					file, _ := f.Open()
-					e := volume.upload(id, uploadPath[i], f.Filename, file)
-					if e != nil {
-						esl = append(esl, e.Error())
+					er := self.upload(self.target.id, self.uploadpath[i].path, f.Filename, file)
+					if er != nil {
+						ers = append(ers, er.Error())
 					}
-					renames = []string{}
+					self.req.Renames = []string{}
 				}
-				if len(esl) > 0 {
-					volume.Error = esl
+				if len(ers) > 0 {
+					self.res.Error = ers
 				}
 			}
 
 
 		case "get":
-			//ToDo
+			err = self.get()
+			if err != nil {
+				self.res.Error = err.Error()
+			}
 		case "put":
-			//ToDo
+			err = self.put()
+			if err != nil {
+				self.res.Error = err.Error()
+			}
 		case "archive":
 			//ToDo
 		case "extract":
@@ -347,19 +217,19 @@ func NetHttp(config Volumes) http.Handler {
 		case "info":
 			//ToDo
 		case "resize":
-			switch mode {
+			switch self.req.Mode {
 			case "resize":
-				err = volume.resize(id, path, width, height)
+				err = self.resize(self.target.id, self.target.path)
 			case "crop":
-				err = volume.crop(id, path, x, y, width, height)
+				err = self.crop(self.target.id, self.target.path)
 			case "rotate":
-				err = volume.rotate(id, path, bg, degree)
+				err = self.rotate(self.target.id, self.target.path)
 			}
-			_ = quality
 			if err != nil {
-				volume.Error = err.Error()
+				self.res.Error = err.Error()
 			}
 		case "url":
+			self.url()
 		//	case "netmount":
 		case "zipdl":
 			//ToDo
@@ -370,11 +240,11 @@ func NetHttp(config Volumes) http.Handler {
 
 
 		default:
-			volume.Error = "errUnknownCmd"
+			self.res.Error = "errUnknownCmd"
 
 		}
 
-		js, err := json.Marshal(volume)
+		js, err := json.Marshal(self.res)
 		if err != nil {
 			js = []byte(`{"error" : ["errConf", "errJSON"]}`)
 			return
