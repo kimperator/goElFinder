@@ -5,7 +5,7 @@ type elf struct {
 	res        response
 	target     target
 	targets    []target
-	dirs       []target
+	dirs       []string
 	uploadpath []target
 	dst        target
 	src        target
@@ -22,8 +22,8 @@ type request struct {
 	Tree bool `form:"tree"`
 	Name string `form:"name"`
 	Target string `form:"target"`
-	Targets []string `form:"targets"`
-	Dirs []string `form:"dirs"`
+	Targets []string `form:"targets[]"`
+	Dirs []string `form:"dirs[]"`
 	Mode string `form:"mode"`
 	Bg string `form:"bg"`
 	Width int `form:"width"`
@@ -32,11 +32,11 @@ type request struct {
 	Y int `form:"y"`
 	Degree int `form:"degree"`
 	Quality int `form:"quality"`
-	Renames []string `form:"renames"`
+	Renames []string `form:"renames[]"`
 	Suffix string  `form:"suffix"`
-	Intersect []string  `form:"intersect"`
+	Intersect []string  `form:"intersect[]"`
 	Chunk string `form:"chunk"`
-	UploadPath []string `form:"upload_path"`
+	UploadPath []string `form:"upload_path[]"`
 	Cid int `form:"cid"`
 	Content string `form:"content"`
 	Dst string `form:"dst"`
@@ -60,7 +60,7 @@ type response struct {
 
 	Dim string `json:"dim,omitempty"`               // for images
 
-	Added []fileDir `json:"added,omitempty"`                    // for upload, mkdir, rename
+	Added []fileDir `json:"added"`                    // for upload, mkdir, rename
 	Warning []string `json:"warning,omitempty"`         // for upload
 	Changed []fileDir `json:"changed,omitempty"`        // for mkdir
 	Hashes map[string]string `json:"hashes,omitempty"` // for mkdir

@@ -23,11 +23,12 @@ func (self *elf) upload(id, path, name string, file io.Reader) error {
 		self.res.Warning = append(self.res.Warning, err.Error())
 		return err
 	}
-	i, err := _infoFileDir(target{id: id, path: path})
+fmt.Printf("Append id: '%s' path: '%s'\n", id, filepath.Join(path, name))
+	fInfo, err := _infoFileDir(target{id: id, path: filepath.Join(path, name)})
 	if err != nil {
 		self.res.Warning = append(self.res.Warning, err.Error())
 	}
-	self.res.Added = append(self.res.Added, i)
+	self.res.Added = append(self.res.Added, fInfo)
 	return nil
 }
 
@@ -75,7 +76,7 @@ func (self *elf) chunkUpload(id, path, chunk string, file io.Reader) error {
 		self.res.Chunkmerged = fmt.Sprintf(".%d_%s.%d_part", self.req.Cid, name, total)
 		self.res.Name = name
 	}
-	fmt.Println("Check chunk result:", complete)
+fmt.Println("Check chunk result:", complete)
 	if self.res.Added == nil {
 		self.res.Added = []fileDir{}
 	}
@@ -133,7 +134,7 @@ func (self *elf) chunkMerge(id, path, chunk string) error {
 			return err
 		}
 	}
-	fInfo, err := _infoFileDir(target{id: id, path: path})
+	fInfo, err := _infoFileDir(target{id: id, path: filepath.Join(path, name)})
 	if err != nil {
 		return err
 	}

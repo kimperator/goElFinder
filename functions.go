@@ -7,7 +7,6 @@ import (
 	"strings"
 	"io/ioutil"
 	"errors"
-	"fmt"
 	"log"
 )
 
@@ -65,7 +64,7 @@ func (self *elf) _parse() (err error) {
 			self.uploadpath = append(self.uploadpath, p)
 		}
 	}
-
+/*
 	if len(self.req.Dirs) != 0 {
 		for i := range self.req.Dirs {
 			var p target
@@ -79,7 +78,7 @@ func (self *elf) _parse() (err error) {
 			self.dirs = append(self.dirs, p)
 		}
 	}
-
+*/
 	return nil
 }
 
@@ -156,7 +155,6 @@ func (self *elf) size() int64 {
 	for _, p := range self.targets {
 		s := _size(p.id, p.path)
 		size = size + s
-fmt.Println("Size for", p, "=", size)
 	}
 
 	return size
@@ -193,12 +191,12 @@ func (self *elf) mkdir() error {
 }
 
 func (self *elf) mkdirs() error {
-	for _, d := range self.dirs {
-		err := os.MkdirAll(filepath.Join(conf[d.id].Root, d.path), 0755)
+	for _, d := range self.req.Dirs {
+		err := os.MkdirAll(filepath.Join(conf[self.target.id].Root, self.target.path, d), 0755)
 		if err != nil {
 			return err
 		}
-		added, err := _infoFileDir(d)
+		added, err := _infoFileDir(target{id: self.target.id, path: filepath.Join(self.target.path, d)})
 		if err != nil {
 			return err
 		}
@@ -206,7 +204,7 @@ func (self *elf) mkdirs() error {
 		if self.res.Hashes == nil {
 			self.res.Hashes = map[string]string{}
 		}
-		self.res.Hashes[self.res.Name] = createHash(d.id, d.path)
+		self.res.Hashes[self.res.Name] = createHash(self.target.id, d)
 
 	}
 
@@ -226,7 +224,7 @@ func (self *elf) mkdirs() error {
 }
 
 func (self *elf) rm() error {
-	for i := range self.targets {
+	for i := range self.req.Targets {
 		err := os.RemoveAll(filepath.Join(conf[self.targets[i].id].Root, self.targets[i].path))
 		if err != nil {
 			return err
@@ -327,7 +325,6 @@ func (self *elf) url() {
 
 func (self *elf) paste() error {
 	for _, t := range self.targets {
-fmt.Println("Paste:", t)
 		info, err := os.Stat(self._getRealPath(t))
 		if err != nil {
 			return err
@@ -344,11 +341,17 @@ fmt.Println("Paste:", t)
 				return err
 			}
 		}
+		added, err := _infoFileDir(target{id: self.dst.id, path: filepath.Join(self.dst.path, filepath.Base(t.path))})
+		if err != nil {
+			return err
+		}
+		self.res.Added = append(self.res.Added, added)
 		if self.req.Cut {
 			err = os.RemoveAll(self._getRealPath(t))
 			if err != nil {
 				return err
 			}
+			self.res.Removed = append(self.res.Removed, createHash(t.id, t.path))
 		}
 	}
 

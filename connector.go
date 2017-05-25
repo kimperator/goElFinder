@@ -50,7 +50,7 @@ func NetHttp(config Volumes) http.Handler {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-fmt.Println("GET:", r.Form)
+//fmt.Println("GET:", r.Form)
 
 			err = decoder.Decode(&self.req, r.Form)
 			if err != nil {
@@ -60,13 +60,13 @@ fmt.Println("GET:", r.Form)
 
 		} else if r.Method == "POST" {
 			r.ParseMultipartForm(32 << 20) // ToDo check 8Mb
-fmt.Println("POST", r.PostForm)
+//fmt.Println("POST", r.PostForm)
 
 			err = decoder.Decode(&self.req, r.PostForm)
 			if err != nil {
 				log.Println(err)
 			}
-fmt.Printf("%#v\n", self)
+//fmt.Printf("%#v\n", self)
 
 		}
 //-------------------------------------------------------------------------
@@ -118,9 +118,7 @@ fmt.Printf("%#v\n", self)
 		case "tmb":
 			self.tmb()
 
-
 		case "size":
-fmt.Println("Cmd size ", self.targets)
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(fmt.Sprintf(`{"size": %d}`, self.size())))
 			return
@@ -130,6 +128,7 @@ fmt.Println("Cmd size ", self.targets)
 				self.res.Error = err.Error()
 			}
 		case "mkdir":
+fmt.Println("dirs:", self.req.Dirs)
 			if len(self.req.Dirs) > 0 { // ToDo this
 				self.mkdirs()
 			} else {
@@ -145,6 +144,7 @@ fmt.Println("Cmd size ", self.targets)
 				self.res.Error = err.Error()
 			}
 		case "rm":
+fmt.Println("Form targets:", self.req.Targets)
 			err = self.rm()
 			if err != nil {
 				self.res.Error = err.Error()
@@ -160,24 +160,28 @@ fmt.Println("Cmd size ", self.targets)
 		case "paste":
 			self.paste()
 		case "upload": // ToDo Fix it
+fmt.Printf("Chunk: %v\n", self.req.Chunk)
 			if self.req.Chunk != "" {
 				var (
 					file io.Reader
 					err error
 				)
+fmt.Printf("Cid: %v\n", r.PostForm["cid"])
 				if r.PostForm["cid"] == nil {
 					if len(self.req.Renames) != 0 {
 						fmt.Println("Result renames", self.renames(self.target.id, self.target.path))
 					}
 fmt.Println("Result chunk merge", self.chunkMerge(self.target.id, self.uploadpath[0].path, self.req.Chunk))
-				}
-				for i := range r.MultipartForm.File["upload[]"] {
-					file, err = r.MultipartForm.File["upload[]"][i].Open()
-					if err != nil {
-						fmt.Println(err)
-					}
+				} else {
+					for i := range r.MultipartForm.File["upload[]"] {
+						file, err = r.MultipartForm.File["upload[]"][i].Open()
+						if err != nil {
+							fmt.Println(err)
+						}
 fmt.Println("Result chunk upload", self.chunkUpload(self.target.id, self.uploadpath[i].path, self.req.Chunk, file))
+					}
 				}
+
 
 			} else {
 				if len(self.req.Renames) != 0 {
