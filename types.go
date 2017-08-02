@@ -1,6 +1,28 @@
 package goElFinder
 
+
+type Volumes map[string]Volume
+
+type Volume struct {
+	Default bool
+	Name string
+	Root string
+	Url string
+	DefaultRight bool
+	AllowDirs []string
+	DenyDirs []string
+} //ToDo WebDir and alias
+
+//type config struct {
+//	id string
+//	rootDir string // ToDo [name]realPath???
+//	url string
+//	dirsRight map[string]bool
+//	defaultRight bool
+//}
+
 type elf struct {
+	volumes    Volumes
 	req        request
 	res        response
 	target     target
@@ -45,8 +67,6 @@ type request struct {
 }
 
 type response struct {
-	//current config
-	//volumes Volumes
 
 	Api string `json:"api,omitempty"`               // The version number of the protocol, must be >= 2.1, ATTENTION - return api ONLY for init request!
 	Cwd fileDir `json:"cwd,omitempty"`              // Current Working Directory - information about the current directory. Information about File/Directory

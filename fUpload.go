@@ -12,7 +12,7 @@ import (
 )
 
 func (self *elf) upload(id, path, name string, file io.Reader) error {
-	f, err := os.OpenFile(filepath.Join(conf[id].Root, path, name), os.O_WRONLY|os.O_CREATE, 0666)
+	f, err := os.OpenFile(filepath.Join(self.volumes[id].Root, path, name), os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		self.res.Warning = append(self.res.Warning, err.Error())
 		return err
@@ -24,7 +24,7 @@ func (self *elf) upload(id, path, name string, file io.Reader) error {
 		return err
 	}
 fmt.Printf("Append id: '%s' path: '%s'\n", id, filepath.Join(path, name))
-	fInfo, err := _infoFileDir(target{id: id, path: filepath.Join(path, name)})
+	fInfo, err := self.volumes.infoFileDir(target{id: id, path: filepath.Join(path, name)})
 	if err != nil {
 		self.res.Warning = append(self.res.Warning, err.Error())
 	}
@@ -34,7 +34,7 @@ fmt.Printf("Append id: '%s' path: '%s'\n", id, filepath.Join(path, name))
 
 func (self *elf) chunkUpload(id, path, chunk string, file io.Reader) error {
 	if file != nil {
-		tmpPath := filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s~", self.req.Cid, chunk))
+		tmpPath := filepath.Join(self.volumes[id].Root, path, fmt.Sprintf(".%d_%s~", self.req.Cid, chunk))
 		f, err := os.OpenFile(tmpPath, os.O_WRONLY | os.O_CREATE, 0666)
 		if err != nil {
 			self.res.Warning = append(self.res.Warning, err.Error())
@@ -46,7 +46,7 @@ func (self *elf) chunkUpload(id, path, chunk string, file io.Reader) error {
 			return err
 		}
 		f.Close()
-		os.Rename(tmpPath, filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s", self.req.Cid, chunk)))
+		os.Rename(tmpPath, filepath.Join(self.volumes[id].Root, path, fmt.Sprintf(".%d_%s", self.req.Cid, chunk)))
 	}
 
 	// check complete ---------------------------------------------------
@@ -63,7 +63,7 @@ func (self *elf) chunkUpload(id, path, chunk string, file io.Reader) error {
 	}
 	allComplete := func() bool {
 		for i := 0; i <= total; i++ {
-			if _, err := os.Stat(filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s.%d_%d.part", self.req.Cid, name, i, total))); os.IsNotExist(err) {
+			if _, err := os.Stat(filepath.Join(self.volumes[id].Root, path, fmt.Sprintf(".%d_%s.%d_%d.part", self.req.Cid, name, i, total))); os.IsNotExist(err) {
 				return false
 			}
 		}
@@ -101,8 +101,8 @@ func (self *elf) chunkMerge(id, path, chunk string) error {
 		return err
 	}
 
-	targetPath := filepath.Join(conf[id].Root, path, name)
-	os.Rename(filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, 0, total)), targetPath)
+	targetPath := filepath.Join(self.volumes[id].Root, path, name)
+	os.Rename(filepath.Join(self.volumes[id].Root, path, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, 0, total)), targetPath)
 	f, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		self.res.Warning = append(self.res.Warning, err.Error())
@@ -110,7 +110,7 @@ func (self *elf) chunkMerge(id, path, chunk string) error {
 	}
 	defer f.Close()
 	for i := 1; i <= total; i++ {
-		chunkPath := filepath.Join(conf[id].Root, path, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total))
+		chunkPath := filepath.Join(self.volumes[id].Root, path, fmt.Sprintf(".%d_%s.%d_%d.part", cid, name, i, total))
 		c, err := os.OpenFile(chunkPath, os.O_RDONLY, 0666)
 		if err != nil {
 			return err
@@ -134,7 +134,7 @@ func (self *elf) chunkMerge(id, path, chunk string) error {
 			return err
 		}
 	}
-	fInfo, err := _infoFileDir(target{id: id, path: filepath.Join(path, name)})
+	fInfo, err := self.volumes.infoFileDir(target{id: id, path: filepath.Join(path, name)})
 	if err != nil {
 		return err
 	}

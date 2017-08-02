@@ -1,16 +1,3 @@
-package goElFinder
-
-import (
-	"net/http"
-	"encoding/json"
-	"fmt"
-	"log"
-	"io"
-	"github.com/go-playground/form"
-)
-
-const APIver = "2.1"
-
 /*
 ElFinder connector handler
 
@@ -28,19 +15,31 @@ Example code:
 	}
 	mux.Handle("/connector", elFinder.NetHttp(config))
 */
+package goElFinder
 
-var conf Volumes
+import (
+	"net/http"
+	"encoding/json"
+	"fmt"
+	"log"
+	"github.com/go-playground/form"
+)
+
+const APIver = "2.1"
+
 var decoder *form.Decoder
 
-func NetHttp(config Volumes) http.Handler {
+func (volumes Volumes) NetHttp() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var (
 			err error
 		)
-		conf = config
+		//conf = config
 
-// ToDo use it--------------------
+// ToDo use it--------------------ssi
 		var self elf
+		self.volumes = volumes
+
 		decoder = form.NewDecoder()
 
 //--------------------
@@ -50,7 +49,6 @@ func NetHttp(config Volumes) http.Handler {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-//fmt.Println("GET:", r.Form)
 
 			err = decoder.Decode(&self.req, r.Form)
 			if err != nil {
@@ -60,19 +58,16 @@ func NetHttp(config Volumes) http.Handler {
 
 		} else if r.Method == "POST" {
 			r.ParseMultipartForm(32 << 20) // ToDo check 8Mb
-//fmt.Println("POST", r.PostForm)
 
 			err = decoder.Decode(&self.req, r.PostForm)
 			if err != nil {
 				log.Println(err)
 			}
-//fmt.Printf("%#v\n", self)
-
 		}
 //-------------------------------------------------------------------------
 
-		err = self._parse()
-		self.target, err = parsePathHash(self.req.Target)
+		err = self.parse()
+		self.target, err = self.volumes.parsePathHash(self.req.Target)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(fmt.Sprintf(`{"error" : "%s"}`, err)))
@@ -128,7 +123,6 @@ func NetHttp(config Volumes) http.Handler {
 				self.res.Error = err.Error()
 			}
 		case "mkdir":
-fmt.Println("dirs:", self.req.Dirs)
 			if len(self.req.Dirs) > 0 { // ToDo this
 				self.mkdirs()
 			} else {
@@ -137,14 +131,12 @@ fmt.Println("dirs:", self.req.Dirs)
 					self.res.Error = err.Error()
 				}
 			}
-
 		case "mkfile":
 			err = self.mkfile()
 			if err != nil {
 				self.res.Error = err.Error()
 			}
 		case "rm":
-fmt.Println("Form targets:", self.req.Targets)
 			err = self.rm()
 			if err != nil {
 				self.res.Error = err.Error()
@@ -159,30 +151,29 @@ fmt.Println("Form targets:", self.req.Targets)
 			//ToDo
 		case "paste":
 			self.paste()
-		case "upload": // ToDo Fix it
-fmt.Printf("Chunk: %v\n", self.req.Chunk)
+		case "upload":
+
 			if self.req.Chunk != "" {
-				var (
-					file io.Reader
-					err error
-				)
-fmt.Printf("Cid: %v\n", r.PostForm["cid"])
 				if r.PostForm["cid"] == nil {
 					if len(self.req.Renames) != 0 {
 						fmt.Println("Result renames", self.renames(self.target.id, self.target.path))
 					}
-fmt.Println("Result chunk merge", self.chunkMerge(self.target.id, self.uploadpath[0].path, self.req.Chunk))
+					err = self.chunkMerge(self.target.id, self.uploadpath[0].path, self.req.Chunk)
+					if err != nil {
+						self.res.Error = err
+					}
 				} else {
 					for i := range r.MultipartForm.File["upload[]"] {
-						file, err = r.MultipartForm.File["upload[]"][i].Open()
+						file, err := r.MultipartForm.File["upload[]"][i].Open()
 						if err != nil {
 							fmt.Println(err)
 						}
-fmt.Println("Result chunk upload", self.chunkUpload(self.target.id, self.uploadpath[i].path, self.req.Chunk, file))
+						err = self.chunkUpload(self.target.id, self.uploadpath[i].path, self.req.Chunk, file)
+						if err != nil {
+							self.res.Error = err
+						}
 					}
 				}
-
-
 			} else {
 				if len(self.req.Renames) != 0 {
 					fmt.Println("Result renames", self. renames(self.target.id, self.target.path))

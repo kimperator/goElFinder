@@ -2,50 +2,55 @@ package goElFinder
 
 import (
 	"path/filepath"
-	"os"
-	"mime"
-	"strings"
-	"io/ioutil"
 	"errors"
 	"log"
+	"strings"
+	"encoding/base64"
+	"fmt"
+	"os"
+	"mime"
+	"crypto/sha1"
+	"io/ioutil"
 )
 
-func (self *elf) _getRealPath(t target) string {
-	return filepath.Join(conf[t.id].Root, t.path)
+// Return real filesystem path
+func (self *elf) getRealPath(t target) string {
+	return filepath.Join(self.volumes[t.id].Root, t.path)
 }
 
-func (self *elf) _parse() (err error) {
-	self.target, err = parsePathHash(self.req.Target)
+// Parse request (target(s), destination(s), upload path) and check rights
+func (self *elf) parse() (err error) {
+	self.target, err = self.volumes.parsePathHash(self.req.Target)
 	if err != nil {
 		return err
 	}
-	if !_getRight(self.target) { // ToDo check right with parse
+	if !self.volumes.getRight(self.target) { // ToDo check right with parse
 		return errors.New("errLocked")
 	}
 
-	self.dst, err = parsePathHash(self.req.Dst)
+	self.dst, err = self.volumes.parsePathHash(self.req.Dst)
 	if err != nil {
 		return err
 	}
-	if !_getRight(self.dst) {
+	if !self.volumes.getRight(self.dst) {
 		return errors.New("errLocked")
 	}
 
-	self.src, err = parsePathHash(self.req.Src)
+	self.src, err = self.volumes.parsePathHash(self.req.Src)
 	if err != nil {
 		return err
 	}
-	if !_getRight(self.src) {
+	if !self.volumes.getRight(self.src) {
 		return errors.New("errLocked")
 	}
 
 	for _, ft := range self.req.Targets {
 		var p target
-		p, err = parsePathHash(ft)
+		p, err = self.volumes.parsePathHash(ft)
 		if err != nil {
 			log.Println(err)
 		}
-		if !_getRight(p) {
+		if !self.volumes.getRight(p) {
 			return errors.New("errLocked")
 		}
 		self.targets = append(self.targets, p)
@@ -54,11 +59,11 @@ func (self *elf) _parse() (err error) {
 	if len(self.req.UploadPath) != 0 {
 		for i := range self.req.UploadPath {
 			var p target
-			p, err = parsePathHash(self.req.UploadPath[i])
+			p, err = self.volumes.parsePathHash(self.req.UploadPath[i])
 			if err != nil {
 				log.Println(err)
 			}
-			if !_getRight(p) {
+			if !self.volumes.getRight(p) {
 				return errors.New("errLocked")
 			}
 			self.uploadpath = append(self.uploadpath, p)
@@ -72,7 +77,7 @@ func (self *elf) _parse() (err error) {
 			if err != nil {
 				log.Println(err)
 			}
-			if !_getRight(p) {
+			if !getRight(p) {
 				return errors.New("errLocked")
 			}
 			self.dirs = append(self.dirs, p)
@@ -82,278 +87,192 @@ func (self *elf) _parse() (err error) {
 	return nil
 }
 
-// Request functions
-func (self *elf) open() error {
-	var err error
-
-	if self.req.Init {
-		self.res.Api = APIver
+func (volumes Volumes) infoFileDir(t target) (fd fileDir, err error) {
+	//path = filepath.Clean(path)
+	if !volumes.getRight(t) {
+		return fd, errors.New("Permission denied")
 	}
-
-	//obj, err := self._infoPath(filepath.Join(self.current.rootDir, target))
-	obj, err := _infoFileDir(self.target)
+	realpath := filepath.Join(volumes[t.id].Root, t.path)
+	u, err := os.Open(realpath)
 	if err != nil {
-		return err
+		return fd, err
 	}
-	self.res.Cwd = obj
-	self.res.Files = []fileDir{}
-	if self.req.Tree {
-		for k := range conf {
-				p, err := _infoFileDir(target{id: k})
-				if err == nil {
-					p.Options.Url = conf[k].Url
-					self.res.Files = append(self.res.Files, p)
-				}
-		}
+	defer u.Close()
+	info, err := u.Stat()
+	if err != nil {
+		return fd, err
 	}
 
-	fd := _listAll(self.target)
-	for _, f := range fd {
-		i, err := _infoFileDir(target{id: self.target.id, path: f})
-		if err == nil {
-			self.res.Files = append(self.res.Files, i)
-		}
-	}
-	return nil
-}
+	fd.Volumeid = t.id
+	fd.Name = info.Name()
 
-func (self *elf) tree(t target) error {
-	fd := _listDirs(t)
-	self.res.Tree = []fileDir{}
-	for _, f := range fd {
-		if i, err := _infoFileDir(target{id:t.id, path:f}); err == nil {
-			self.res.Tree = append(self.res.Tree, i)
-		}
-	}
-	return nil
-}
-
-func (self *elf) parents(t target) error {
-	self.res.Tree = []fileDir{}
-
-	for t.path != string(filepath.Separator) {
-		t.path = filepath.Join(t.path, "..")
-		fd := _listDirs(t)
-		for _, f := range fd {
-			if i, err := _infoFileDir(target{id: t.id, path: f}); err == nil {
-				self.res.Tree = append(self.res.Tree, i)
-			}
-		}
-	}
-	for k := range conf {
-		p, err := _infoFileDir(target{id: k, path: ""})
-		if err == nil {
-			p.Options.Url = conf[k].Url
-			self.res.Tree = append(self.res.Tree, p)
-		}
-	}
-	return nil
-}
-
-func (self *elf) size() int64 {
-	var size int64
-	for _, p := range self.targets {
-		s := _size(p.id, p.path)
-		size = size + s
-	}
-
-	return size
-}
-func (self *elf) file() (fileName, mimeType string, data []byte, err error) {
-	if _getRight(self.target) {
-		path := filepath.Join(conf[self.target.id].Root, self.target.path)
-		data, err = ioutil.ReadFile(path)
-		fileName = filepath.Base(path)
-		mimeType = mime.TypeByExtension(filepath.Ext(fileName))
+	if info.IsDir() {
+		fd.Size = _size(volumes[t.id].Root,t.path)
 	} else {
-		err = errors.New("Permission denied")
+		fd.Size = info.Size()
 	}
 
-	return fileName, mimeType, data, err
-}
+	fd.Ts = info.ModTime().Unix()
+	fd.Phash = createHash(t.id, filepath.Join(t.path, ".." + string(os.PathSeparator)))
+	fd.Hash = createHash(t.id, t.path)
 
-func (self *elf) mkdir() error {
-	create := filepath.Join(self.target.path, self.req.Name)
-	err := os.MkdirAll(filepath.Join(conf[self.target.id].Root, create), 0755)
-	if err != nil {
-		return err
-	}
-	added, err := _infoFileDir(target{id: self.target.id, path: create})
-	if err != nil {
-		return err
-	}
-	self.res.Added = append(self.res.Added, added)
-	if self.res.Hashes == nil {
-		self.res.Hashes = map[string]string{}
-	}
-	self.res.Hashes[self.res.Name] = createHash(self.target.id, create)
-	return nil
-}
-
-func (self *elf) mkdirs() error {
-	for _, d := range self.req.Dirs {
-		err := os.MkdirAll(filepath.Join(conf[self.target.id].Root, self.target.path, d), 0755)
-		if err != nil {
-			return err
+	if info.IsDir() {
+		if t.path == string(os.PathSeparator) || t.path == "" {
+			fd.Isroot = 1
+			fd.Hash = createHash(t.id, string(os.PathSeparator))
+			fd.Phash = ""
+			fd.Options.Path = volumes[t.id].Root
+			fd.Options.Separator = string(os.PathSeparator)
+			fd.Phash = ""
+			fd.Isroot = 1
+			fd.Locked = 0
 		}
-		added, err := _infoFileDir(target{id: self.target.id, path: filepath.Join(self.target.path, d)})
-		if err != nil {
-			return err
-		}
-		self.res.Added = append(self.res.Added, added)
-		if self.res.Hashes == nil {
-			self.res.Hashes = map[string]string{}
-		}
-		self.res.Hashes[self.res.Name] = createHash(self.target.id, d)
 
-	}
+		fd.Mime = "directory"
 
-	/*err := []string{}
-	for _, f := range e.dirs {
-		e.req.Name = f
-		er := e.mkdir(id, e.path.path)
-		if er != nil {
-			err = append(err, er.Error())
-		}
-	}
-	if len(err) > 0 {
-		e.res.Error = err
-	}*/
-
-	return nil
-}
-
-func (self *elf) rm() error {
-	for i := range self.req.Targets {
-		err := os.RemoveAll(filepath.Join(conf[self.targets[i].id].Root, self.targets[i].path))
-		if err != nil {
-			return err
-		}
-		self.res.Removed = append(self.res.Removed, createHash(self.targets[i].id, self.targets[i].path))
-	}
-
-	return nil
-}
-
-func (self *elf) rename(id, path string) error {
-	newPath := filepath.Join(filepath.Dir(path), filepath.Base(self.req.Name))
-	err := os.Rename(filepath.Join(conf[id].Root, path), filepath.Join(conf[id].Root, newPath))
-	if err != nil {
-		return err
-	}
-	added, err := _infoFileDir(target{id: id, path: newPath})
-	self.res.Added = append(self.res.Added, added)
-	self.res.Removed = append(self.res.Removed, createHash(id, path))
-	return nil
-}
-
-func (self *elf) renames(id, path string) error {
-	if len(self.req.Renames) != 0 {
-		for _, r := range self.req.Renames  {
-			oldPath := filepath.Join(path, r)
-			newPath := filepath.Join(path, strings.TrimRight(r, filepath.Ext(r)) + self.req.Suffix + filepath.Ext(r))
-
-			err := os.Rename(filepath.Join(conf[id].Root, oldPath), filepath.Join(conf[id].Root, newPath)) //ToDo suffix clean
-			if err != nil {
-				return err
+		n, _ := u.Readdir(0)
+		hasDir := func() byte {
+			for _, t := range n {
+				if t.IsDir() {
+					return 1
+				}
 			}
-			added, err := _infoFileDir(target{id: id, path: newPath})
-			self.res.Added = append(self.res.Added, added)
+			return 0
 		}
-	}
-	return nil
-}
+		fd.Dirs = hasDir()
 
-func (self *elf) ls() {
-	self.res.List = []string{}
-	for _, i := range self.req.Intersect {
-		_, err := os.Stat(filepath.Join(conf[self.target.id].Root, self.target.path, i));
-		if !os.IsNotExist(err) {
-			self.res.List = append(self.res.List, i)
-		}
-	}
-}
+		fd.Options.Url = volumes[t.id].Url + "/"
+		//ToDo fd.Options.TmbUrl = volumes[id].Url + path + "/.tmb/"
 
-func (self *elf) mkfile() error {
+		fd.Options.Archivers.Create = []string{ "application/zip" }
+		fd.Options.Archivers.Extract = []string{ "application/zip" }
+		fd.Options.Archivers.Createext = map[string]string{}
+		fd.Options.Archivers.Createext["application/zip"] = "zip"
 
-	err := os.MkdirAll(filepath.Join(conf[self.target.id].Root, self.target.path), 0755)
-	if err != nil {
-		return err
-	}
-	create := filepath.Join(self.target.path, self.req.Name)
-	f, err := os.OpenFile(filepath.Join(conf[self.target.id].Root, create), os.O_WRONLY | os.O_CREATE, 0666)
-	if err != nil {
-		return err
-	}
-	f.Close()
-
-	added, err := _infoFileDir(target{id: self.target.id, path: create})
-	if err != nil {
-		return err
-	}
-
-	self.res.Added = append(self.res.Added, added)
-
-	return nil
-}
-
-func (self *elf) get() error {
-	b, err := ioutil.ReadFile(filepath.Join(conf[self.target.id].Root, self.target.path))
-	if err != nil {
-		return err
-	}
-	self.res.Content = string(b)
-	return nil
-}
-
-func (self *elf) put() error {
-	err := ioutil.WriteFile(filepath.Join(conf[self.target.id].Root, self.target.path), []byte(self.req.Content), 0666)
-	if err != nil {
-		return err
-	}
-	info, err := _infoFileDir(self.target)
-	if err != nil {
-		return err
-	}
-	self.res.Changed = append(self.res.Changed, info)
-	return nil
-}
-
-func (self *elf) url() {
-	self.res.Url = conf[self.target.id].Url + self.target.path
-}
-
-func (self *elf) paste() error {
-	for _, t := range self.targets {
-		info, err := os.Stat(self._getRealPath(t))
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			//ToDo check isset destination
-			err = copyDir(self._getRealPath(t), filepath.Join(self._getRealPath(self.dst),filepath.Base(t.path)))
-			if err != nil {
-				return err
-			}
-		} else {
-			err = copyFile(self._getRealPath(t), filepath.Join(self._getRealPath(self.dst),filepath.Base(t.path)))
-			if err != nil {
-				return err
+	} else {
+		fd.Mime = mime.TypeByExtension(filepath.Ext(info.Name()))
+		if fd.Mime == "image/jpeg" || fd.Mime == "image/png" || fd.Mime == "image/gif" {
+			tmb := fmt.Sprintf("%x", sha1.Sum([]byte(filepath.Base(t.path))))+filepath.Ext(t.path)
+			if _, err := os.Stat(filepath.Join(volumes[t.id].Root, filepath.Dir(t.path), ".tmb", tmb)); !os.IsNotExist(err) {
+				fd.Tmb = tmb
+				fmt.Println("Tmb for", fd.Name, "yes")
+			} else {
+				fd.Tmb = "1"
+				fmt.Println("Tmb for", fd.Name, "no")
 			}
 		}
-		added, err := _infoFileDir(target{id: self.dst.id, path: filepath.Join(self.dst.path, filepath.Base(t.path))})
-		if err != nil {
-			return err
-		}
-		self.res.Added = append(self.res.Added, added)
-		if self.req.Cut {
-			err = os.RemoveAll(self._getRealPath(t))
-			if err != nil {
-				return err
+	}
+
+	//ToDo get permission
+	fd.Read = 1
+	fd.Write = 1
+
+	return fd, nil
+}
+
+func (volumes Volumes) listDirs(t target) (dirs []string) {
+	realpath := filepath.Join(volumes[t.id].Root, t.path)
+	entries, err := ioutil.ReadDir(realpath) // ToDo use os.Readdirnames() ?
+	if err != nil {
+		return
+	}
+	for _,ent := range entries {
+		if ent.IsDir() {
+			if volumes.getRight(t) {
+				dirs = append(dirs, filepath.Join(t.path, ent.Name()))
 			}
-			self.res.Removed = append(self.res.Removed, createHash(t.id, t.path))
+		}
+	}
+	fmt.Println(dirs)
+	return
+}
+
+func (volumes Volumes) listAll(t target) (all []string) {
+	entries, err := ioutil.ReadDir(filepath.Join(volumes[t.id].Root, t.path))
+	if err != nil {
+		return
+	}
+	for _,ent := range entries {
+		if volumes.getRight(t) {
+			all = append(all, filepath.Join(t.path, ent.Name()))
+		}
+	}
+	return
+}
+
+func (volumes Volumes) getRight(p target) bool {
+	if p.path == "" || p.path == string(os.PathSeparator) {
+		return true
+	}
+	if strings.HasPrefix(filepath.Base(p.path), ".") {
+		return false
+	}
+	for _, v := range volumes[p.id].DenyDirs {
+		if strings.HasPrefix(p.path, v) {
+			return false
+		}
+	}
+	for _, v := range volumes[p.id].AllowDirs {
+		if strings.HasPrefix(p.path, v) {
+			return true
+		}
+	}
+	return volumes[p.id].DefaultRight
+}
+
+func (volumes Volumes) parsePathHash(tgt string) (target, error) { //ToDo check file name
+	splitTarget := strings.SplitN(tgt, "_", 2)
+	var (
+		vi, vp string
+		err error
+	)
+	if len(splitTarget) != 2 {
+		//return volume, path, errors.New("Bad target")
+		for k := range volumes {
+			if volumes[k].Default == true {
+				vi = k
+				log.Println("Select default volume:", k)
+				break
+			}
+		}
+	} else {
+		vi = splitTarget[0]
+		vp, err = decode64(splitTarget[1])
+		if err != nil {
+			return target{id: vi, path: vp}, errors.New("Bad base64 path")
 		}
 	}
 
-	return nil
+	if _, ok := volumes[vi]; !ok {
+		return target{id: vi, path: vp}, errors.New("Bad volume id")
+	}
+
+	// Clean path
+	if vp == "" {
+		vp = string(os.PathSeparator)
+	} else {
+		vp = strings.TrimPrefix(filepath.Clean(vp), "..")
+		vp = strings.TrimPrefix(filepath.Clean(vp), string(os.PathSeparator) + "..")
+	}
+
+	return target{id: vi, path: vp}, err
 }
+
+// Code/decode functions
+func decode64(s string) (string, error) {
+	str := strings.Replace(s, " ", "+",-1)
+	t, err := base64.RawURLEncoding.DecodeString(str)
+	if err != nil {
+		return "", err
+	}
+	return string(t), nil
+}
+
+func encode64(s string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(s))
+}
+
+func createHash(volumeId, path string) string {
+	return volumeId + "_" + encode64(path)
+}
+

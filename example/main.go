@@ -9,11 +9,11 @@ import (
 
 func main() {
 	mux := http.NewServeMux()
-	mux.Handle("/elf/", http.StripPrefix("/elf/", http.FileServer(http.Dir("./elf/"))))
+	mux.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir("./elf/"))))
 	mux.Handle("/files/", http.StripPrefix("/files/", http.FileServer(http.Dir("./files/"))))
 
-	config := goElFinder.Volumes{}
-	config["l0"] = goElFinder.Local {
+	volumes := goElFinder.Volumes{}
+	volumes["l0"] = goElFinder.Volume{
 		Default: true,
 		Root: "/home/aagafonov/Golang/myprojects/goElFinder/example/files/1",
 		Url: "http://ly.dmbasis.ru:8080/files/1",
@@ -21,12 +21,12 @@ func main() {
 		DenyDirs:  []string{"/Deny"},
 		DefaultRight: false,
 	}
-	config["l1"] = goElFinder.Local {
+	volumes["l1"] = goElFinder.Volume{
 		Root: "/home/aagafonov/Golang/myprojects/goElFinder/example/files/2",
 		Url: "http://ly.dmbasis.ru:8080/files/2",
 		DefaultRight: true,
 	}
-	mux.Handle("/connector", goElFinder.NetHttp(config))
+	mux.Handle("/connector", volumes.NetHttp())
 
 	fmt.Println("Listen on :8080")
 	log.Fatal(http.ListenAndServe(":8080", mux))
