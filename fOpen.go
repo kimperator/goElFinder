@@ -8,7 +8,7 @@ func (self *elf) open() error {
 	}
 
 	//obj, err := self._infoPath(filepath.Join(self.current.rootDir, target))
-	obj, err := self.volumes.infoFileDir(self.target)
+	obj, err := self.volumes.infoTarget(self.target)
 	if err != nil {
 		return err
 	}
@@ -16,7 +16,7 @@ func (self *elf) open() error {
 	self.res.Files = []fileDir{}
 	if self.req.Tree {
 		for k := range self.volumes {
-			p, err := self.volumes.infoFileDir(target{id: k})
+			p, err := self.volumes.infoTarget(target{id: k})
 			if err == nil {
 				p.Options.Url = self.volumes[k].Url
 				self.res.Files = append(self.res.Files, p)
@@ -26,7 +26,7 @@ func (self *elf) open() error {
 
 	fd := self.volumes.listAll(self.target)
 	for _, f := range fd {
-		i, err := self.volumes.infoFileDir(target{id: self.target.id, path: f})
+		i, err := self.volumes.infoTarget(target{id: self.target.id, path: f})
 		if err == nil {
 			self.res.Files = append(self.res.Files, i)
 		}

@@ -46,7 +46,7 @@ func (self *elf) resize(id, path string) error {
 	if err != nil {
 		return err
 	}
-	changed, err := self.volumes.infoFileDir(target{id: id, path: path})
+	changed, err := self.volumes.infoTarget(target{id: id, path: path})
 	if err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func (self *elf) crop(id, path string) error {
 	if err != nil {
 		return err
 	}
-	changed, err := self.volumes.infoFileDir(target{id: id, path: path})
+	changed, err := self.volumes.infoTarget(target{id: id, path: path})
 	if err != nil {
 		return err
 	}
@@ -75,7 +75,7 @@ func (self *elf) rotate(id, path string) error {
 	if err != nil {
 		return err
 	}
-	changed, err := self.volumes.infoFileDir(target{id: id, path: path})
+	changed, err := self.volumes.infoTarget(target{id: id, path: path})
 	if err != nil {
 		return err
 	}

@@ -10,7 +10,7 @@ func (self *elf) put() error {
 	if err != nil {
 		return err
 	}
-	info, err := self.volumes.infoFileDir(self.target)
+	info, err := self.volumes.infoTarget(self.target)
 	if err != nil {
 		return err
 	}

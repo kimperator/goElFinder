@@ -34,7 +34,9 @@ type elf struct {
 }
 
 type target struct {
+	// id volume
 	id string
+	// path in volume
 	path string
 }
 
@@ -64,6 +66,9 @@ type request struct {
 	Dst string `form:"dst"`
 	Src string `form:"src"`
 	Cut bool `form:"cut"`
+	Type string `form:"type"`
+	MakeDir bool `form:"makedir"`
+
 }
 
 type response struct {

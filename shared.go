@@ -13,8 +13,21 @@ import (
 	"io/ioutil"
 )
 
-// Return real filesystem path
-func (self *elf) getRealPath(t target) string {
+func (self *elf) realPath(target string) (string, error) {
+	t, err :=  self.volumes.parsePathHash(target)
+	if err != nil {
+		return "", err
+	}
+
+	if !self.volumes.getRight(t) {
+		return "", errors.New("errLocked")
+	}
+
+	return filepath.Join(self.volumes[t.id].Root, t.path), nil
+}
+
+// Return real filesystem path ToDo remove and replace this
+func (self *elf) realTargetPath(t target) string {
 	return filepath.Join(self.volumes[t.id].Root, t.path)
 }
 
@@ -87,8 +100,7 @@ func (self *elf) parse() (err error) {
 	return nil
 }
 
-func (volumes Volumes) infoFileDir(t target) (fd fileDir, err error) {
-	//path = filepath.Clean(path)
+func (volumes Volumes) infoTarget(t target) (fd fileDir, err error) {
 	if !volumes.getRight(t) {
 		return fd, errors.New("Permission denied")
 	}
@@ -133,7 +145,7 @@ func (volumes Volumes) infoFileDir(t target) (fd fileDir, err error) {
 		n, _ := u.Readdir(0)
 		hasDir := func() byte {
 			for _, t := range n {
-				if t.IsDir() {
+				if t.IsDir() && !strings.HasPrefix(t.Name(), ".") {
 					return 1
 				}
 			}
@@ -229,9 +241,9 @@ func (volumes Volumes) parsePathHash(tgt string) (target, error) { //ToDo check 
 	if len(splitTarget) != 2 {
 		//return volume, path, errors.New("Bad target")
 		for k := range volumes {
-			if volumes[k].Default == true {
+			if volumes[k].Default {
 				vi = k
-				log.Println("Select default volume:", k)
+//				log.Println("Select default volume:", k)
 				break
 			}
 		}

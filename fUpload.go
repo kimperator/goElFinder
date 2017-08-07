@@ -24,7 +24,7 @@ func (self *elf) upload(id, path, name string, file io.Reader) error {
 		return err
 	}
 fmt.Printf("Append id: '%s' path: '%s'\n", id, filepath.Join(path, name))
-	fInfo, err := self.volumes.infoFileDir(target{id: id, path: filepath.Join(path, name)})
+	fInfo, err := self.volumes.infoTarget(target{id: id, path: filepath.Join(path, name)})
 	if err != nil {
 		self.res.Warning = append(self.res.Warning, err.Error())
 	}
@@ -134,7 +134,7 @@ func (self *elf) chunkMerge(id, path, chunk string) error {
 			return err
 		}
 	}
-	fInfo, err := self.volumes.infoFileDir(target{id: id, path: filepath.Join(path, name)})
+	fInfo, err := self.volumes.infoTarget(target{id: id, path: filepath.Join(path, name)})
 	if err != nil {
 		return err
 	}

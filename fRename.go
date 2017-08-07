@@ -12,7 +12,7 @@ func (self *elf) rename(id, path string) error {
 	if err != nil {
 		return err
 	}
-	added, err := self.volumes.infoFileDir(target{id: id, path: newPath})
+	added, err := self.volumes.infoTarget(target{id: id, path: newPath})
 	self.res.Added = append(self.res.Added, added)
 	self.res.Removed = append(self.res.Removed, createHash(id, path))
 	return nil
@@ -28,7 +28,7 @@ func (self *elf) renames(id, path string) error {
 			if err != nil {
 				return err
 			}
-			added, err := self.volumes.infoFileDir(target{id: id, path: newPath})
+			added, err := self.volumes.infoTarget(target{id: id, path: newPath})
 			self.res.Added = append(self.res.Added, added)
 		}
 	}

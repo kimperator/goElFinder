@@ -10,29 +10,29 @@ import (
 
 func (self *elf) paste() error {
 	for _, t := range self.targets {
-		info, err := os.Stat(self.getRealPath(t))
+		info, err := os.Stat(self.realTargetPath(t))
 		if err != nil {
 			return err
 		}
 		if info.IsDir() {
 			//ToDo check isset destination
-			err = copyDir(self.getRealPath(t), filepath.Join(self.getRealPath(self.dst),filepath.Base(t.path)))
+			err = copyDir(self.realTargetPath(t), filepath.Join(self.realTargetPath(self.dst),filepath.Base(t.path)))
 			if err != nil {
 				return err
 			}
 		} else {
-			err = copyFile(self.getRealPath(t), filepath.Join(self.getRealPath(self.dst),filepath.Base(t.path)))
+			err = copyFile(self.realTargetPath(t), filepath.Join(self.realTargetPath(self.dst),filepath.Base(t.path)))
 			if err != nil {
 				return err
 			}
 		}
-		added, err := self.volumes.infoFileDir(target{id: self.dst.id, path: filepath.Join(self.dst.path, filepath.Base(t.path))})
+		added, err := self.volumes.infoTarget(target{id: self.dst.id, path: filepath.Join(self.dst.path, filepath.Base(t.path))})
 		if err != nil {
 			return err
 		}
 		self.res.Added = append(self.res.Added, added)
 		if self.req.Cut {
-			err = os.RemoveAll(self.getRealPath(t))
+			err = os.RemoveAll(self.realTargetPath(t))
 			if err != nil {
 				return err
 			}

@@ -204,9 +204,15 @@ func (volumes Volumes) NetHttp() http.Handler {
 				self.res.Error = err.Error()
 			}
 		case "archive":
-			//ToDo
+			err = self.archive()
+			if err != nil {
+				self.res.Error = err.Error()
+			}
 		case "extract":
-			//ToDo
+			err = self.extract()
+			if err != nil {
+				self.res.Error = err.Error()
+			}
 		case "search":
 			//ToDo
 		case "info":

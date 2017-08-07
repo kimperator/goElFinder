@@ -18,7 +18,7 @@ func (self *elf) mkfile() error {
 	}
 	f.Close()
 
-	added, err := self.volumes.infoFileDir(target{id: self.target.id, path: create})
+	added, err := self.volumes.infoTarget(target{id: self.target.id, path: create})
 	if err != nil {
 		return err
 	}
