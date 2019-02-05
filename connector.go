@@ -18,11 +18,11 @@ Example code:
 package goElFinder
 
 import (
-	"net/http"
 	"encoding/json"
 	"fmt"
-	"log"
 	"github.com/go-playground/form"
+	"log"
+	"net/http"
 )
 
 const APIver = "2.1"
@@ -36,13 +36,13 @@ func (volumes Volumes) NetHttp() http.Handler {
 		)
 		//conf = config
 
-// ToDo use it--------------------ssi
+		// ToDo use it--------------------ssi
 		var self elf
 		self.volumes = volumes
 
 		decoder = form.NewDecoder()
 
-//--------------------
+		//--------------------
 
 		if r.Method == "GET" {
 			if err := r.ParseForm(); err != nil {
@@ -55,7 +55,6 @@ func (volumes Volumes) NetHttp() http.Handler {
 				log.Println(err)
 			}
 
-
 		} else if r.Method == "POST" {
 			r.ParseMultipartForm(32 << 20) // ToDo check 8Mb
 
@@ -64,7 +63,7 @@ func (volumes Volumes) NetHttp() http.Handler {
 				log.Println(err)
 			}
 		}
-//-------------------------------------------------------------------------
+		//-------------------------------------------------------------------------
 
 		err = self.parse()
 		self.target, err = self.volumes.parsePathHash(self.req.Target)
@@ -74,7 +73,7 @@ func (volumes Volumes) NetHttp() http.Handler {
 			return
 		}
 
-//-------------------------------------------------------------------------
+		//-------------------------------------------------------------------------
 
 		switch self.req.Cmd {
 		case "open":
@@ -90,9 +89,9 @@ func (volumes Volumes) NetHttp() http.Handler {
 			} else {
 				w.Header().Set("Content-Type", mimeType)
 				if r.Form["download"] != nil {
-					w.Header().Set("Content-Disposition", "attachment; filename='" + fileName + "'")
+					w.Header().Set("Content-Disposition", "attachment; filename='"+fileName+"'")
 				} else {
-					w.Header().Set("Content-Disposition", "inline; filename='" + fileName + "'")
+					w.Header().Set("Content-Disposition", "inline; filename='"+fileName+"'")
 				}
 				w.Write(data)
 				return
@@ -176,12 +175,12 @@ func (volumes Volumes) NetHttp() http.Handler {
 				}
 			} else {
 				if len(self.req.Renames) != 0 {
-					fmt.Println("Result renames", self. renames(self.target.id, self.target.path))
+					fmt.Println("Result renames", self.renames(self.target.id, self.target.path))
 				}
 				ers := []string{}
-				for i, f := range r.MultipartForm.File["upload[]"] {
+				for _, f := range r.MultipartForm.File["upload[]"] {
 					file, _ := f.Open()
-					er := self.upload(self.target.id, self.uploadpath[i].path, f.Filename, file)
+					er := self.upload(self.target.id, self.target.path, f.Filename, file)
 					if er != nil {
 						ers = append(ers, er.Error())
 					}
@@ -191,7 +190,6 @@ func (volumes Volumes) NetHttp() http.Handler {
 					self.res.Error = ers
 				}
 			}
-
 
 		case "get":
 			err = self.get()
@@ -238,7 +236,6 @@ func (volumes Volumes) NetHttp() http.Handler {
 			//ToDo
 		case "chmod":
 			//ToDo
-
 
 		default:
 			self.res.Error = "errUnknownCmd"
